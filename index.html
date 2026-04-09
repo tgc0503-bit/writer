@@ -2032,7 +2032,7 @@ input[type=number]{-moz-appearance:textfield}
           <span class="sblabel">작품 도구</span>
           <div style="display:flex;gap:4px">
             <button class="icobtn" title="폴더 추가" onclick="pubAddFolder()">📁</button>
-            <button class="icobtn" title="항목 추가" onclick="pubAddItem()">🔵</button>
+            <button class="icobtn" title="도구 추가" onclick="pubShowToolPicker(event)">✨</button>
             <button class="icobtn" title="문서 추가" onclick="pubAddDoc()">📄</button>
           </div>
         </div>
@@ -2670,12 +2670,24 @@ async function load(){
     S.reports= data.reports || [];
     S.pub = data.pub || [];
     S.pubFiles = data.pubFiles || [];
-    // pub 기본 폴더 초기화 (최초 1회)
+    // pub 기본 구조 초기화 (최초 1회) — 작가 친화적 기본 세팅
     if(!S.pub.length){
+      const now = new Date().toISOString();
       S.pub=[
-        {id:'pubf1',t:'F',n:'시놉시스',p:null,o:0,open:true,driveName:'집필스튜디오_시놉시스',driveId:null},
-        {id:'pubf2',t:'F',n:'캐릭터',p:null,o:1,open:true,driveName:'집필스튜디오_캐릭터',driveId:null},
-        {id:'pubf3',t:'F',n:'작품 노트',p:null,o:2,open:true,driveName:'집필스튜디오_작품노트',driveId:null},
+        // ── 작품 1 폴더 ──
+        {id:'pubf1',t:'F',n:'새 작품',p:null,o:0,open:true,driveName:'집필스튜디오_새작품',driveId:null},
+        // 시놉시스
+        {id:'pub_sy1',t:'WSY',n:'시놉시스',p:'pubf1',o:0,data:{},ts:now},
+        // 캐릭터 서브폴더
+        {id:'pubf1c',t:'F',n:'캐릭터',p:'pubf1',o:1,open:true},
+        // 세계관
+        {id:'pub_ws1',t:'WWS',n:'세계관/배경',p:'pubf1',o:2,data:{},ts:now},
+        // 타임라인
+        {id:'pub_tl1',t:'WTL',n:'타임라인',p:'pubf1',o:3,data:{events:[]},ts:now},
+        // 용어 사전
+        {id:'pub_gs1',t:'WGS',n:'용어 사전',p:'pubf1',o:4,data:{tabs:[{id:'tab1',name:'기본',rows:[]}],activeTab:'tab1'},ts:now},
+        // 아이디어 메모
+        {id:'pub_im1',t:'WIM',n:'아이디어 메모',p:'pubf1',o:5,data:{},ts:now},
       ];
     }
     // IDB → S.reports 마이그레이션 (구버전 데이터 복원)
@@ -3404,51 +3416,111 @@ let _pubDragId = null, _pubDropPos = null;
 
 // 헬퍼: 자식 노드
 function pubKids(pid){ return S.pub.filter(n=>n.p===pid).sort((a,b)=>a.o-b.o); }
-// 헬퍼: 최상위 폴더 찾기 (노드의 루트 F)
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //  집필 툴 기반 (1단계)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-// 집필 노드 타입 목록
 const WRITING_TYPES = {
-  WCS: {label:'캐릭터 시트', icon:'👤'},
-  WRM: {label:'관계도',      icon:'🕸'},
-  WGS: {label:'용어 사전',    icon:'📚'},
-  WMB: {label:'무드보드',      icon:'🖼'},
-  WPT: {label:'진행률 트래커', icon:'📊'},
-  WTL: {label:'타임라인',    icon:'⏱'},
-  WTR: {label:'트리트먼트',  icon:'📋'},
-  WIM: {label:'아이디어 메모',icon:'💡'},
-  WWS: {label:'세계관/배경', icon:'🌍'},
-  WSY: {label:'시놉시스',    icon:'📖'},
-  WED: {label:'집필 에디터',   icon:'✏️'},
+  WSY: {label:'시놉시스',       icon:'📖'},
+  WCS: {label:'캐릭터 시트',    icon:'👤'},
+  WRM: {label:'관계도',         icon:'🕸'},
+  WWS: {label:'세계관/배경',    icon:'🌍'},
+  WTL: {label:'타임라인',       icon:'⏱'},
+  WGS: {label:'용어 사전',      icon:'📚'},
+  WTR: {label:'트리트먼트',     icon:'📋'},
+  WIM: {label:'아이디어 메모',  icon:'💡'},
+  WED: {label:'집필 에디터',    icon:'✏️'},
+  WPT: {label:'진행률 트래커',  icon:'📊'},
 };
 
-// 현재 열린 집필 노드 ID
 let _writingSel = null;
 
-// 이 항목이 집필 폴더(isWriting:true) 하위인지 확인
-function _isWritingItem(nodeId){
-  const root = pubRootFolder(nodeId);
-  return root && root.isWriting === true;
+// isWriting 플래그 없이 어느 폴더/항목에서나 집필 도구 사용 가능
+function _isWritingItem(nodeId){ return true; }
+
+// ── 도구 추가 팝업 ──
+function pubShowToolPicker(e){
+  e.stopPropagation();
+  document.getElementById('mb_toolpick')?.remove();
+  const sel = _pubSel ? S.pub.find(n=>n.id===_pubSel) : null;
+  const pid = sel ? (sel.t==='F'?sel.id : (sel.t==='I'?sel.id : sel.p||null)) : null;
+
+  const pop = document.createElement('div');
+  pop.id = 'mb_toolpick';
+  pop.style.cssText = `position:fixed;background:var(--surf);border:1px solid var(--bdr);border-radius:10px;padding:10px;z-index:4000;box-shadow:0 4px 20px rgba(0,0,0,.25);min-width:200px`;
+
+  const hdr = document.createElement('div');
+  hdr.style.cssText = 'font-size:11px;color:var(--tx3);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--bdr)';
+  hdr.textContent = pid ? '도구를 선택하세요' : '📁 폴더를 먼저 선택하세요';
+  pop.appendChild(hdr);
+
+  if(pid){
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:4px';
+    Object.entries(WRITING_TYPES).forEach(([type, info])=>{
+      const btn = document.createElement('button');
+      btn.style.cssText = 'display:flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;background:var(--surf2);color:var(--tx);font-size:12px;cursor:pointer;text-align:left;transition:background .1s';
+      btn.innerHTML = `<span style="font-size:16px">${info.icon}</span>${info.label}`;
+      btn.onmouseover = ()=>btn.style.background='var(--surf3)';
+      btn.onmouseout  = ()=>btn.style.background='var(--surf2)';
+      btn.onclick = ()=>{ pubAddWritingNode(pid, type); pop.remove(); };
+      grid.appendChild(btn);
+    });
+    pop.appendChild(grid);
+  }
+
+  const r = e.target.getBoundingClientRect();
+  pop.style.left = Math.min(r.left, window.innerWidth-220)+'px';
+  pop.style.top  = r.bottom+4+'px';
+  document.body.appendChild(pop);
+  setTimeout(()=>document.addEventListener('click',function h(ev){
+    if(!pop.contains(ev.target)){pop.remove();document.removeEventListener('click',h);}
+  },100));
 }
 
-// 집필 전용 노드 추가
-function pubAddWritingNode(itemId, type){
-  const par = S.pub.find(n=>n.id===itemId);
+// 특정 parentId 지정 버전 (우클릭 메뉴에서 호출)
+function pubShowToolPickerTo(parentId){
+  document.getElementById('mb_toolpick')?.remove();
+  const pop = document.createElement('div');
+  pop.id = 'mb_toolpick';
+  pop.style.cssText = `position:fixed;background:var(--surf);border:1px solid var(--bdr);border-radius:10px;padding:10px;z-index:4000;box-shadow:0 4px 20px rgba(0,0,0,.25);min-width:200px;left:50%;top:50%;transform:translate(-50%,-50%)`;
+  const hdr = document.createElement('div');
+  hdr.style.cssText = 'font-size:11px;color:var(--tx3);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between';
+  hdr.innerHTML = '<span>✨ 도구 선택</span>';
+  const cl = document.createElement('button');
+  cl.style.cssText='background:none;border:none;cursor:pointer;color:var(--tx3);font-size:13px;padding:0 2px';
+  cl.textContent='✕'; cl.onclick=()=>pop.remove();
+  hdr.appendChild(cl);
+  pop.appendChild(hdr);
+  const grid = document.createElement('div');
+  grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:4px';
+  Object.entries(WRITING_TYPES).forEach(([type,info])=>{
+    const btn = document.createElement('button');
+    btn.style.cssText='display:flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;background:var(--surf2);color:var(--tx);font-size:12px;cursor:pointer;transition:background .1s';
+    btn.innerHTML=`<span style="font-size:16px">${info.icon}</span>${info.label}`;
+    btn.onmouseover=()=>btn.style.background='var(--surf3)';
+    btn.onmouseout=()=>btn.style.background='var(--surf2)';
+    btn.onclick=()=>{ pubAddWritingNode(parentId, type); pop.remove(); };
+    grid.appendChild(btn);
+  });
+  pop.appendChild(grid);
+  document.body.appendChild(pop);
+  setTimeout(()=>document.addEventListener('click',function h(ev){
+    if(!pop.contains(ev.target)){pop.remove();document.removeEventListener('click',h);}
+  },100));
+}
+  const par = S.pub.find(n=>n.id===parentId);
   if(par) par.open = true;
-  const mo = pubKids(itemId).reduce((m,n)=>Math.max(m,n.o),-1);
+  const mo = pubKids(parentId).reduce((m,n)=>Math.max(m,n.o),-1);
   const info = WRITING_TYPES[type];
   const node = {
     id: uid(), t: type, n: info.label,
-    p: itemId, o: mo+1,
-    data: {},      // 시트 내용
-    ts: new Date().toISOString()
+    p: parentId, o: mo+1,
+    data: {}, ts: new Date().toISOString()
   };
   S.pub.push(node);
-  dsave();
-  renderPubTree();
+  dsave(); renderPubTree();
   _writingSel = node.id;
   pubOpenWritingNode(node);
 }
@@ -4682,7 +4754,8 @@ function _tlCreateItem(ev, idx, node, container, d){
   delBtn.onclick = e=>{
     e.stopPropagation();
     if(!confirm('이 이벤트를 삭제하시겠습니까?')) return;
-    d.events.splice(idx, 1);
+    const i = d.events.findIndex(x=>x.id===ev.id);
+    if(i>=0) d.events.splice(i, 1);
     _saveWritingData(node.id, {events:[...d.events]});
     const list = document.getElementById('tl-list-'+node.id);
     if(list) _tlRenderList(list, node, container, d);
@@ -4705,9 +4778,19 @@ function _tlCreateItem(ev, idx, node, container, d){
   card.addEventListener('contextmenu', e=>{
     e.preventDefault(); e.stopPropagation();
     showCtx(e,[
-      {l:'✏️ 수정', a:()=>{ document.querySelectorAll('.tl-card-edit.open').forEach(f=>{f.classList.remove('open');f.previousSibling.style.display='';}); editForm.classList.add('open'); card.style.display='none'; titleInp.focus(); }},
+      {l:'✏️ 수정', a:()=>{
+        document.querySelectorAll('.tl-card-edit.open').forEach(f=>{f.classList.remove('open');f.previousSibling.style.display='';});
+        editForm.classList.add('open'); card.style.display='none'; titleInp.focus();
+      }},
       'sep',
-      {l:'🗑 삭제', d:true, a:()=>{ if(!confirm('이 이벤트를 삭제하시겠습니까?')) return; d.events.splice(idx,1); _saveWritingData(node.id,{events:[...d.events]}); const list=document.getElementById('tl-list-'+node.id); if(list)_tlRenderList(list,node,container,d); }},
+      {l:'🗑 삭제', d:true, a:()=>{
+        if(!confirm('이 이벤트를 삭제하시겠습니까?')) return;
+        const i = d.events.findIndex(x=>x.id===ev.id);
+        if(i>=0) d.events.splice(i,1);
+        _saveWritingData(node.id,{events:[...d.events]});
+        const list=document.getElementById('tl-list-'+node.id);
+        if(list)_tlRenderList(list,node,container,d);
+      }},
     ]);
   });
   // 카드 클릭 → 편집 폼 열기
@@ -4885,36 +4968,28 @@ function buildPubTree(wrap,pid,depth){
     });
     item.addEventListener('dblclick',e=>{e.stopPropagation();pubStartRename(item,node);});
     item.addEventListener('contextmenu',e=>{
+      e.stopPropagation(); e.preventDefault();
       const menu=[];
       if(isF){
-        menu.push({l:'🔵 항목 추가',a:()=>pubAddItemTo(node.id)});
-        menu.push({l:'📄 문서 추가',a:()=>pubAddDocTo(node.id)});
+        menu.push({l:'✨ 도구 추가', a:()=>pubShowToolPickerTo(node.id)});
+        menu.push({l:'📄 문서 추가', a:()=>pubAddDocTo(node.id)});
         menu.push('sep');
-        if(node.p===null) menu.push({l:node.isWriting?'✍️ 집필 폴더 해제':'✍️ 집필 폴더로 지정',a:()=>{node.isWriting=!node.isWriting;dsave();renderPubTree();toast(node.isWriting?'✍️ 집필 폴더로 지정됐습니다.':'지정이 해제됐습니다.');}});
+        menu.push({l:'✏️ 이름 변경', a:()=>pubStartRename(item,node)});
+        menu.push({l:'🗑 삭제', d:true, a:()=>pubDelNode(node.id)});
+      } else if(isI){
+        menu.push({l:'✨ 도구 추가', a:()=>pubShowToolPickerTo(node.id)});
         menu.push('sep');
-      }
-      if(isI){
-        // 집필 폴더 하위 항목이면 집필 전용 메뉴 추가
-        if(_isWritingItem(node.id)){
-          menu.push({l:'──── 집필 시트 추가 ────',a:()=>{}});
-          Object.entries(WRITING_TYPES).forEach(([type,info])=>{
-            if(type==='WPT') return; // WED에 통합
-            menu.push({l:info.icon+' '+info.label+' 추가',a:()=>pubAddWritingNode(node.id,type)});
-          });
-          menu.push('sep');
-        }
-        // 색상 변경 (항목만)
-        menu.push({l:'🎨 색상 변경',a:()=>pubChangeColor(node)});
+        menu.push({l:'🎨 색상 변경', a:()=>pubChangeColor(node)});
+        menu.push({l:'✏️ 이름 변경', a:()=>pubStartRename(item,node)});
+        menu.push({l:'🗑 삭제', d:true, a:()=>pubDelNode(node.id)});
+      } else if(WRITING_TYPES[node.t]){
+        menu.push({l:'✏️ 이름 변경', a:()=>pubStartRename(item,node)});
         menu.push('sep');
-      }
-      if(WRITING_TYPES[node.t]){
-        // 집필 시트 전용 메뉴
-        menu.push({l:'✏️ 이름 변경',a:()=>{const el=wrap.querySelector(`[data-id="${node.id}"]`);if(el)pubStartRename(el,node);}});
-        menu.push({l:'🗑 삭제',d:true,a:()=>pubDelNode(node.id)});
+        menu.push({l:'🗑 삭제', d:true, a:()=>pubDelNode(node.id)});
       } else {
-        menu.push({l:node.locked?'🔓 잠금 해제':'🔒 잠금',a:()=>toggleNodeLock(node,renderPubTree)});
-        menu.push({l:'✏️ 이름 변경',a:()=>{const el=wrap.querySelector(`[data-id="${node.id}"]`);if(el)pubStartRename(el,node);}});
-        menu.push({l:'🗑 삭제',d:true,a:()=>pubDelNode(node.id)});
+        menu.push({l:node.locked?'🔓 잠금 해제':'🔒 잠금', a:()=>toggleNodeLock(node,renderPubTree)});
+        menu.push({l:'✏️ 이름 변경', a:()=>pubStartRename(item,node)});
+        menu.push({l:'🗑 삭제', d:true, a:()=>pubDelNode(node.id)});
       }
       showCtx(e,menu);
     });
@@ -9236,10 +9311,23 @@ function renderWritingGS(node, container){
   const tbTitle = document.createElement('span');
   tbTitle.className = 'writing-toolbar-title';
   tbTitle.textContent = '📚 용어 사전';
+  // 검색창
+  const srch = document.createElement('input');
+  srch.type='text'; srch.placeholder='용어 검색...';
+  srch.style.cssText='padding:3px 8px;border:1px solid var(--bdr);border-radius:4px;font-size:11px;background:var(--surf2);color:var(--tx);outline:none;width:140px';
+  srch.oninput=()=>{
+    const q=srch.value.trim().toLowerCase();
+    const body=document.getElementById('gs-body-'+node.id);
+    if(!body)return;
+    body.querySelectorAll('tbody tr').forEach(tr=>{
+      const text=tr.textContent.toLowerCase();
+      tr.style.display=(!q||text.includes(q))?'':'none';
+    });
+  };
   const hint = document.createElement('span');
   hint.style.cssText = 'font-size:10px;color:var(--tx3)';
-  hint.textContent = '탭 더블클릭으로 이름 변경 • 행 우클릭으로 삭제';
-  tb.append(tbTitle, hint);
+  hint.textContent = '탭 더블클릭: 이름 변경 • 행 우클릭: 삭제';
+  tb.append(tbTitle, srch, hint);
   container.appendChild(tb);
 
   // 본문
@@ -9334,11 +9422,11 @@ function _gsRenderTabs(tabBar, node, d, wrap){
         'sep',
         {l:'🗑 탭 삭제', d:true, a:()=>{
           if(!confirm(`"${tab.name}" 탭을 삭제하시겠습니까? 내용도 모두 삭제됩니다.`)) return;
-          d.tabs.splice(ti,1);
-          if(d.activeTab===tab.id) d.activeTab=d.tabs[0].id;
+          const delIdx = d.tabs.findIndex(t=>t.id===tab.id);
+          if(delIdx>=0) d.tabs.splice(delIdx,1);
+          if(d.activeTab===tab.id) d.activeTab=d.tabs[0]?.id||'';
           _saveWritingData(node.id,{tabs:[...d.tabs],activeTab:d.activeTab});
-          const cont=document.getElementById('pub-writing-content');
-          if(cont){cont.innerHTML='';renderWritingGS(node,cont);}
+          renderWritingGS(node,container);
         }},
       ]);
     });
