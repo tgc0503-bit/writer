@@ -495,8 +495,11 @@ body{background:var(--bg);color:var(--tx);font-size:13px;line-height:1.5}
 .mbedit table tr:nth-child(even) td{background:rgba(255,255,255,.02)}
 .mbedit hr{border:none;border-top:1px solid var(--bdr);margin:14px 0}
 .mbedit p{margin:2px 0}
-/* 형광펜 가독성: 배경색만 있고 글자색 지정이 없는 span은 어두운 글자로 고정 */
-.mbedit span[style*="background-color"]:not([style*="color"]){color:#1a1a1a!important}
+/* ── 형광펜 가독성 완전 수정 ──
+   data-hl 속성 span은 JS에서 luminance 계산 후 --hl-tx 변수 주입. 테마 무관하게 동작. */
+.mbedit span[data-hl]{color:var(--hl-tx,#1a1a1a)!important;background-color:var(--hl-bg,#ffe066)!important}
+/* 구버전/execCommand 호환: color 없는 span background-color */
+.mbedit span[style*="background-color"]:not([style*="color"]):not([data-hl]){color:#1a1a1a!important}
 /* ── 토글 블록 ── */
 .mb-toggle{margin:4px 0;border-radius:6px;border:1px solid transparent;position:relative}
 .mb-toggle:hover{border-color:var(--bdr2)}
@@ -858,7 +861,27 @@ input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 input[type=number]{-moz-appearance:textfield}
 
 /* ── 글자 수 표시 바 ── */
-.wc-bar{font-size:10px;color:var(--tx3);text-align:right;padding:2px 10px;border-top:1px solid var(--bdr);background:var(--surf2);flex-shrink:0;height:18px;line-height:14px}
+.wc-bar{font-size:10px;color:var(--tx3);text-align:right;padding:2px 10px;border-top:1px solid var(--bdr);background:var(--surf2);flex-shrink:0;min-height:18px;line-height:14px;display:flex;align-items:center;justify-content:flex-end;gap:10px}
+.wc-goal-wrap{display:flex;align-items:center;gap:6px;flex:1;min-width:0}
+.wc-goal-bar{flex:1;height:4px;background:var(--surf3);border-radius:2px;overflow:hidden;min-width:40px;max-width:160px}
+.wc-goal-fill{height:100%;border-radius:2px;background:var(--ac);transition:width .3s}
+.wc-goal-fill.done{background:var(--gn)}
+/* 집중 모드 */
+.focus-mode .sidebar{display:none!important}
+.focus-mode #neditors{max-width:760px;margin:0 auto}
+.focus-mode .etbar{opacity:0;transition:opacity .2s;pointer-events:none}
+.focus-mode .etbar:hover{opacity:1;pointer-events:auto}
+.focus-mode .mbedit{font-size:16px;line-height:2;padding:2rem 3rem!important}
+.focus-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:800;cursor:pointer}
+.focus-mode~.focus-overlay,.panel.focus-mode .focus-overlay{display:block}
+/* 목표 설정 팝업 */
+.goal-pop{position:fixed;background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:12px 14px;z-index:4000;box-shadow:0 4px 16px rgba(0,0,0,.25);min-width:200px}
+.goal-pop label{font-size:11px;color:var(--tx3);display:block;margin-bottom:4px}
+.goal-pop input{width:100%;padding:5px 8px;border:1px solid var(--bdr);border-radius:4px;font-size:13px;background:var(--surf2);color:var(--tx);outline:none}
+.goal-pop input:focus{border-color:var(--ac)}
+.goal-pop-btns{display:flex;gap:6px;margin-top:8px}
+.goal-pop-btns button{flex:1;padding:4px 0;font-size:12px;border-radius:4px;border:1px solid var(--bdr);cursor:pointer;background:var(--surf2);color:var(--tx)}
+.goal-pop-btns .btn-set{background:var(--ac);color:#fff;border-color:var(--ac)}
 
 /* ── 드래그 업로드 ── */
 .fmgrid.drag-over{border:2px dashed var(--ac)!important;background:rgba(56,139,253,0.06)!important}
@@ -1859,6 +1882,8 @@ input[type=number]{-moz-appearance:textfield}
             <span class="etitle empty" id="et1">← 문서를 선택하세요</span>
             <span id="readonly-badge1" class="readonly-badge">읽기전용</span>
             <button class="splitbtn" id="rdonly-btn1" onclick="toggleReadonly(1)" title="읽기 전용 잠금" style="display:none">🔓</button>
+            <button class="splitbtn" id="goal-btn" onclick="openGoalPop(event)" title="목표 글자수 설정" style="display:none">🎯 목표</button>
+            <button class="splitbtn" id="focus-btn" onclick="toggleFocusMode()" title="집중 모드 (Esc로 해제)" style="display:none">🔲 집중</button>
             <div class="export-wrap" id="export-wrap" style="display:none">
               <button class="splitbtn" onclick="toggleExportMenu('export-menu')">⬇ 내보내기</button>
               <div class="export-menu" id="export-menu">
@@ -1876,7 +1901,6 @@ input[type=number]{-moz-appearance:textfield}
             </div>
             <button class="splitbtn" id="splitbtn" onclick="toggleSplit()">분할 보기</button>
           </div>
-          <div class="rank-hint" id="rank-hint">📌 입력 규칙: 블로그(키워드) 작성 및 업로드 &nbsp;/&nbsp; 블로그(키워드) 수정 작업</div>
           <div class="eempty" id="ee1"><span style="font-size:28px">📄</span>문서를 선택하세요</div>
           <div class="equill-wrap hidden" id="ew1">
             <div id="eq1toolbar"></div>
@@ -5187,11 +5211,114 @@ function countChars(html){
   const tmp=document.createElement('div');tmp.innerHTML=html||'';
   return (tmp.textContent||tmp.innerText||'').replace(/\s/g,'').length;
 }
-function updateWC(wcId, html){
+function countCharsWithSpace(html){
+  const tmp=document.createElement('div');tmp.innerHTML=html||'';
+  return (tmp.textContent||tmp.innerText||'').replace(/\n/g,'').length;
+}
+
+// ── 세션 집필량 트래커 ──
+const _session={nodeId:null, startChars:0, todayKey:'', todayChars:0};
+function _sessionKey(){const d=new Date();return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate();}
+function _sessionInit(nodeId, html){
+  const n=countChars(html);
+  const today=_sessionKey();
+  // 날짜가 바뀌면 누적 초기화
+  if(_session.todayKey!==today){_session.todayKey=today;_session.todayChars=0;}
+  _session.nodeId=nodeId; _session.startChars=n;
+}
+function _sessionUpdate(html){
+  const n=countChars(html);
+  const delta=n-_session.startChars;
+  if(delta>0){_session.todayChars=(_session.todayChars||0)+delta;}
+  _session.startChars=n; // 매 입력마다 기준 갱신 (디바운스 후)
+}
+
+// ── updateWC: 글자수 + 원고지 환산 + 목표 프로그레스 ──
+function updateWC(wcId, html, nodeId){
   const el=document.getElementById(wcId);if(!el)return;
   const n=countChars(html);
-  el.textContent=n.toLocaleString()+'자';
+  const mae=Math.floor(n/200);
+  const rem=n%200;
+  const maeStr=mae>0?mae+'매 '+rem+'자':n+'자';
+  const nd=nodeId?(S.notes||[]).find(x=>x.id===nodeId):null;
+  const goal=nd?.goal||0;
+  if(goal>0){
+    const pct=Math.min(100,Math.round(n/goal*100));
+    const done=n>=goal;
+    el.innerHTML=`
+      <div class="wc-goal-wrap">
+        <div class="wc-goal-bar"><div class="wc-goal-fill${done?' done':''}" style="width:${pct}%"></div></div>
+        <span style="color:${done?'var(--gn)':'var(--tx3)'}">${n.toLocaleString()} / ${goal.toLocaleString()}자 (${pct}%)</span>
+      </div>
+      <span title="원고지 환산 (200자 1매)">${maeStr}</span>`;
+  }else{
+    el.innerHTML=`<span>${n.toLocaleString()}자</span><span title="원고지 환산 (200자 1매)" style="opacity:.6">${maeStr}</span>`;
+  }
+  if(_session.todayChars>0){
+    const t=el.querySelector('span:last-child')||el;
+    const badge=document.createElement('span');
+    badge.style.cssText='color:var(--gn);font-size:9px';
+    badge.textContent='+'+_session.todayChars.toLocaleString()+'자 (오늘)';
+    el.appendChild(badge);
+  }
 }
+
+// ── 목표 글자수 팝업 ──
+function openGoalPop(e){
+  document.getElementById('mb_goalpop')?.remove();
+  const nd=S.notes.find(n=>n.id===S.p1);if(!nd)return;
+  const pop=document.createElement('div');pop.id='mb_goalpop';pop.className='goal-pop';
+  pop.innerHTML=`<label>목표 글자수 (0 = 해제)</label>
+    <input type="number" id="goal-input" min="0" step="100" value="${nd.goal||0}" placeholder="예: 5000">
+    <div class="goal-pop-btns">
+      <button onclick="document.getElementById('mb_goalpop').remove()">취소</button>
+      <button class="btn-set" onclick="_applyGoal()">설정</button>
+    </div>`;
+  const r=e.target.getBoundingClientRect();
+  pop.style.cssText=`left:${Math.min(r.left,window.innerWidth-220)}px;top:${r.bottom+4}px`;
+  document.body.appendChild(pop);
+  setTimeout(()=>{
+    pop.querySelector('input').focus();
+    document.addEventListener('click',function h(ev){
+      if(!pop.contains(ev.target)&&ev.target.id!=='goal-btn'){pop.remove();document.removeEventListener('click',h);}
+    },100);
+  },10);
+}
+function _applyGoal(){
+  const nd=S.notes.find(n=>n.id===S.p1);if(!nd)return;
+  const v=parseInt(document.getElementById('goal-input')?.value)||0;
+  nd.goal=v; dsave();
+  document.getElementById('mb_goalpop')?.remove();
+  updateWC('wc1',nd.c||'',S.p1);
+}
+
+// ── 집중 모드 ──
+let _focusMode=false;
+function toggleFocusMode(){
+  _focusMode=!_focusMode;
+  const panel=document.getElementById('pnotes');
+  const btn=document.getElementById('focus-btn');
+  if(_focusMode){
+    panel.classList.add('focus-mode');
+    if(btn)btn.textContent='🔲 해제';
+    document.addEventListener('keydown',_focusEsc);
+  }else{
+    panel.classList.remove('focus-mode');
+    if(btn)btn.textContent='🔲 집중';
+    document.removeEventListener('keydown',_focusEsc);
+  }
+}
+function _focusEsc(e){if(e.key==='Escape')toggleFocusMode();}
+
+// ── 형광펜 luminance 헬퍼 ──
+function _hlLuminance(hex){
+  try{
+    const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+    return(0.299*r+0.587*g+0.114*b)/255;
+  }catch(e){return 1;}
+}
+function _hlTextColor(bgHex){return _hlLuminance(bgHex)>0.5?'#1a1a1a':'#f5f5f5';}
+
 
 
 // 내보내기 라이브러리 미리 로드 (앱 시작 시)
@@ -5310,14 +5437,7 @@ function _isInDailyLogFolder(nodeId){
 }
 
 // setPane에서 호출 — 순위체크 버튼/힌트 show/hide
-function _updateRankCheckUI(nodeId){
-  const btn=document.getElementById('rank-check-btn');
-  const hint=document.getElementById('rank-hint');
-  if(!btn||!hint) return;
-  const inDL=nodeId&&_isInDailyLogFolder(nodeId);
-  btn.style.display=inDL?'flex':'none';
-  hint.style.display=inDL?'block':'none';
-}
+function _updateRankCheckUI(nodeId){ /* 마케팅 전용 기능 비활성화 */ }
 
 // 이전 문서 찾기 (이름 기준 정렬 후 현재 문서 바로 앞)
 function _getPrevDailyDoc(nodeId){
@@ -6090,13 +6210,10 @@ class MBEditor {
     hls.forEach(([label,color])=>{
       const b=document.createElement('button');b.className='mbt';
       const isDark=color==='transparent';
-      b.style.cssText=`background:${isDark?'var(--surf2)':color};border:1px solid var(--bdr);font-size:11px;color:#333;justify-content:center`;
+      b.style.cssText=`background:${isDark?'var(--surf2)':color};border:1px solid var(--bdr);font-size:11px;color:${isDark?'var(--tx3)':'#333'};justify-content:center`;
       b.textContent=label;
-      if(isDark)b.style.color='var(--tx3)';
       b.onclick=()=>{
-        this.ce.focus();
-        document.execCommand('hiliteColor',false,color==='transparent'?'transparent':color);
-        const bar=document.getElementById(barId);if(bar&&color!=='transparent')bar.style.background=color;
+        this._applyHL(color,barId);
         this._change();pop.remove();
       };
       g.appendChild(b);
@@ -6106,13 +6223,53 @@ class MBEditor {
     const ci=document.createElement('input');ci.type='color';ci.value='#ffe066';
     ci.style.cssText='width:30px;height:28px;border:1px solid var(--bdr);border-radius:4px;cursor:pointer;padding:1px;background:var(--surf2)';
     const lbl=document.createElement('span');lbl.textContent='직접 선택';lbl.style.cssText='font-size:11px;color:var(--tx3)';
-    ci.oninput=()=>{this.ce.focus();document.execCommand('hiliteColor',false,ci.value);const b=document.getElementById(barId);if(b)b.style.background=ci.value;this._change();};
+    ci.oninput=()=>{this._applyHL(ci.value,barId);this._change();};
     row.append(ci,lbl);
     pop.append(g,row);
     const r=anchor.getBoundingClientRect();
     pop.style.cssText=`left:${Math.min(r.left,window.innerWidth-320)}px;top:${r.bottom+2}px`;
     document.body.appendChild(pop);
     setTimeout(()=>document.addEventListener('click',function h(e){if(!pop.contains(e.target)){pop.remove();document.removeEventListener('click',h);}},100));
+  }
+  // 형광펜 적용 + 가독성 텍스트색 자동 주입
+  _applyHL(color,barId){
+    this.ce.focus();
+    if(this._savedRange){
+      const sel=window.getSelection();sel.removeAllRanges();sel.addRange(this._savedRange);
+    }
+    if(color==='transparent'){
+      // 형광펜 제거: background-color 와 auto-set text color 같이 제거
+      document.execCommand('hiliteColor',false,'transparent');
+      // data-hl 마킹된 span 정리
+      this.ce.querySelectorAll('span[data-hl]').forEach(s=>{
+        const sel2=window.getSelection();
+        if(sel2&&sel2.containsNode(s,true)){
+          s.removeAttribute('data-hl');s.style.removeProperty('color');
+          s.style.removeProperty('background-color');
+          if(!s.getAttribute('style'))s.replaceWith(...s.childNodes);
+        }
+      });
+    }else{
+      const txColor=_hlTextColor(color);
+      // hiliteColor 대신 직접 span 삽입으로 완전 제어
+      const sel=window.getSelection();
+      if(sel&&sel.rangeCount>0){
+        const range=sel.getRangeAt(0);
+        if(!range.collapsed){
+          const span=document.createElement('span');
+          span.dataset.hl='1';
+          span.style.cssText=`background-color:${color};color:${txColor}`;
+          try{
+            range.surroundContents(span);
+          }catch(err){
+            // surroundContents 실패 시(부분 선택 등) fallback
+            document.execCommand('hiliteColor',false,color);
+            document.execCommand('foreColor',false,txColor);
+          }
+        }
+      }
+      const bar=document.getElementById(barId);if(bar)bar.style.background=color;
+    }
   }
   _closeAll(){document.getElementById('mb_pop')?.remove();document.querySelectorAll('.mbdlg').forEach(d=>d.remove());document.querySelector('.tbl-ctx')?.remove();}
 
@@ -6780,8 +6937,10 @@ class MBEditor {
 // Editor instances
 const EDITORS={e1:null,e2:null,we:null};
 function initEditors(){
-  EDITORS.e1=new MBEditor('eq1toolbar','eq1','내용을 입력하세요...\n메모, 링크, 전략, 특이사항 등을 자유롭게 기록하세요.',html=>{
-    const nd=S.notes.find(n=>n.id===S.p1);if(nd){nd.c=html;dsave();}updateWC('wc1',html);
+  EDITORS.e1=new MBEditor('eq1toolbar','eq1','내용을 입력하세요...\n원고, 메모, 아이디어 등을 자유롭게 기록하세요.',html=>{
+    const nd=S.notes.find(n=>n.id===S.p1);if(nd){nd.c=html;dsave();}
+    _sessionUpdate(html);
+    updateWC('wc1',html,S.p1);
   });
   EDITORS.e2=new MBEditor('eq2toolbar','eq2','내용을 입력하세요...',html=>{
     if(_ep2Source==='work'){
@@ -7462,21 +7621,27 @@ function setPane(p,id){
   const ed=p===1?EDITORS.e1:EDITORS.e2;
   if(p===1)S.p1=id;else S.p2=id;
   if(!id){t.textContent='← 문서를 선택하세요';t.className='etitle empty';ew.classList.add('hidden');ee.style.display='flex';
-    if(p===1){const btn=document.getElementById('rdonly-btn1');if(btn)btn.style.display='none';if(_rdonly1){_rdonly1=false;const e1=document.getElementById('eq1');if(e1)e1.contentEditable='true';const b=document.getElementById('readonly-badge1');if(b)b.classList.remove('on');}}
+    if(p===1){
+      const btn=document.getElementById('rdonly-btn1');if(btn)btn.style.display='none';
+      const gb=document.getElementById('goal-btn');if(gb)gb.style.display='none';
+      const fb=document.getElementById('focus-btn');if(fb)fb.style.display='none';
+      if(_rdonly1){_rdonly1=false;const e1=document.getElementById('eq1');if(e1)e1.contentEditable='true';const b=document.getElementById('readonly-badge1');if(b)b.classList.remove('on');}
+    }
     return;
   }
   const nd=S.notes.find(n=>n.id===id);if(!nd)return;
   if(p===1&&typeof _mtg!=='undefined'&&_mtg&&_mtg.nodeId&&id!==_mtg.nodeId)try{hideMeetingCanvas();}catch(e){}
   t.textContent=nd.n;t.className='etitle';
   ew.classList.remove('hidden');ee.style.display='none';
-  if(ed){ed.html=nd.c||'';updateWC(p===1?'wc1':'wc2',nd.c||'');}
+  if(ed){ed.html=nd.c||'';updateWC(p===1?'wc1':'wc2',nd.c||'',p===1?id:null);}
+  // 세션 집필량 초기화 (패널1 전용)
+  if(p===1) _sessionInit(id, nd.c||'');
   // 잠금 상태 반영
   if(p===1){
     const ceId='eq1',badgeId='readonly-badge1';
     applyLockToEditor(ceId,badgeId,nd.locked);
     _rdonly1=!!nd.locked;
   }
-  // 오른쪽 패널이면 편집 가능 상태 복구 (xPanel로 readOnly 됐을 수 있음)
   if(p===2){
     const e2=document.getElementById('eq2');if(e2)e2.contentEditable='true';
     const badge=document.getElementById('readonly-badge2');if(badge)badge.classList.remove('on');
@@ -7485,9 +7650,10 @@ function setPane(p,id){
     const btn=document.getElementById('rdonly-btn1');if(btn)btn.style.display='';
     const expw=document.getElementById('export-wrap');if(expw)expw.style.display='';
     const expwm=document.getElementById('export-wrap-mtg');if(expwm)expwm.style.display='none';
+    const gb=document.getElementById('goal-btn');if(gb)gb.style.display='';
+    const fb=document.getElementById('focus-btn');if(fb)fb.style.display='';
   }
   if(p===2)_ep2Source='notes';
-  if(p===1)_updateRankCheckUI(id);
   renderNoteTree();
 }
 function toggleSplit(){
