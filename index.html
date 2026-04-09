@@ -5883,15 +5883,15 @@ async function restoreLastSession(){
       const node=S.pub.find(n=>n.id===_pubSel);
       if(node)pubOpenNode(node);
     }
-    // 클라이언트/통합문서 탭 문서 복원
+    // 집필 탭 문서 복원
     if(tab==='notes'){
-      if(sess.p1){openDoc(sess.p1);}
-      if(sess.p2on&&sess.p2){S.p2on=true;openDoc(sess.p2);}
-    }
-    if(tab==='work'&&sess.wsel){
-      S.wsel=sess.wsel;
-      const wnd=S.work.find(n=>n.id===sess.wsel);
-      if(wnd){renderWorkBar();}
+      if(sess.p1){setPane(1,sess.p1);}
+      if(sess.p2on&&sess.p2){
+        S.p2on=true;
+        document.getElementById('ep2').style.display='flex';
+        document.getElementById('splitbtn').textContent='단일 보기';
+        xPanelLoadNotes2(sess.p2);
+      }
     }
     // 스크롤 복원 (약간 딜레이 후)
     setTimeout(()=>{
@@ -6941,12 +6941,21 @@ function initEditors(){
     const nd=S.notes.find(n=>n.id===S.p1);if(nd){nd.c=html;dsave();}
     _sessionUpdate(html);
     updateWC('wc1',html,S.p1);
+    // ep2가 같은 문서를 보고 있으면 에디터 내용 동기화 (무한루프 방지 플래그)
+    if(S.p2on&&S.p2===S.p1&&EDITORS.e2&&!EDITORS.e2._syncing){
+      EDITORS.e2._syncing=true;
+      EDITORS.e2.html=html;
+      updateWC('wc2',html);
+      setTimeout(()=>{if(EDITORS.e2)EDITORS.e2._syncing=false;},50);
+    }
   });
   EDITORS.e2=new MBEditor('eq2toolbar','eq2','내용을 입력하세요...',html=>{
-    if(_ep2Source==='work'){
-      const nd=S.work.find(n=>n.id===S.p2);if(nd){nd.content=html;dsave();}
+    if(_ep2Source==='pub'){
+      const nd=S.pub.find(n=>n.id===S.p2);if(nd){nd.content=html;dsave();}
     } else if(_ep2Source==='notes'||!_ep2Source){
       const nd=S.notes.find(n=>n.id===S.p2);if(nd){nd.c=html;dsave();}
+      // ep1과 같은 문서면 ep1 글자수 바 갱신
+      if(S.p2===S.p1) updateWC('wc1',html,S.p1);
     }
     updateWC('wc2',html);
   });
@@ -6960,8 +6969,13 @@ function initEditors(){
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function openDoc(id){
   const nd=S.notes.find(n=>n.id===id);if(!nd||nd.t!=='D')return;
-  if(nd.mt==='meeting'){openMeetingDoc(id);return;} // 회의록 전용 뷰
-  setPane(S.p2on&&S.ap===2?2:1,id);
+  const targetPane=S.p2on&&S.ap===2?2:1;
+  if(targetPane===2){
+    // ep2에 집필 탭 문서 로드 (xPanelLoadNotes2와 동일 경로)
+    xPanelLoadNotes2(id);
+  } else {
+    setPane(1,id);
+  }
 }
 
 //  회의록 — 통합 툴바 (PC 하단 / 모바일 플로팅)
@@ -7657,11 +7671,27 @@ function setPane(p,id){
   renderNoteTree();
 }
 function toggleSplit(){
-  S.p2on=!S.p2on;document.getElementById('ep2').style.display=S.p2on?'flex':'none';
+  S.p2on=!S.p2on;
+  document.getElementById('ep2').style.display=S.p2on?'flex':'none';
   document.getElementById('splitbtn').textContent=S.p2on?'단일 보기':'분할 보기';
-  if(S.p2on)S.ap=2;
+  if(S.p2on){S.ap=2;}
+  else{_ep2Reset();}
 }
-function closeSplit(){S.p2on=false;S.p2=null;S.ap=1;document.getElementById('ep2').style.display='none';document.getElementById('splitbtn').textContent='분할 보기';}
+function closeSplit(){
+  S.p2on=false;S.ap=1;
+  document.getElementById('ep2').style.display='none';
+  document.getElementById('splitbtn').textContent='분할 보기';
+  _ep2Reset();
+}
+function _ep2Reset(){
+  S.p2=null;_ep2Source=null;
+  const t=document.getElementById('et2');if(t){t.textContent='← 문서를 선택하세요';t.className='etitle empty';}
+  const ee=document.getElementById('ee2');if(ee)ee.style.display='flex';
+  const ew=document.getElementById('ew2');if(ew)ew.classList.add('hidden');
+  const rbtn=document.getElementById('ep2-refresh-btn');if(rbtn)rbtn.style.display='none';
+  const badge=document.getElementById('readonly-badge2');if(badge){badge.textContent='';badge.classList.remove('on');}
+  if(EDITORS.e2)EDITORS.e2.html='';
+}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //  WORK NOTES (업무 노트 — 트리 구조)
@@ -11406,10 +11436,9 @@ function srchGoWork(id){closeSearch();switchTab('work');setTimeout(()=>selectWor
 
 // 오른쪽 패널 수동 새로고침
 function ep2Refresh(){
-  if(_ep2Source==='work'&&S.p2){
-    xPanelLoadWork(S.p2);
-  } else if(_ep2Source==='sched'){
-    // 현재 제목에서 연/월 추출
+  if(_ep2Source==='notes'&&S.p2) xPanelLoadNotes2(S.p2);
+  else if(_ep2Source==='pub'&&S.p2) xPanelLoadPub(S.p2);
+  else if(_ep2Source==='sched'){
     const t=document.getElementById('et2');
     const match=t?.textContent.match(/(\d{4})년 (\d{1,2})월/);
     const y=match?parseInt(match[1]):S.sy;
@@ -11423,65 +11452,97 @@ function toggleXPanel(e){
   const menu=document.getElementById('xpanel-menu');
   if(menu.style.display!=='none'){menu.style.display='none';return;}
   let html='<div style="padding:4px">';
-  // 통합문서 섹션
-  html+='<div class="srch-group" style="padding:6px 8px">🗂 통합문서</div>';
-  function buildWork(pid,depth){
-    S.work.filter(n=>n.p===pid).sort((a,b)=>a.o-b.o).forEach(n=>{
+
+  // ── 집필 탭 문서
+  html+='<div class="srch-group" style="padding:6px 8px">✍️ 집필 탭</div>';
+  function buildNotes(pid,depth){
+    S.notes.filter(n=>n.p===pid).sort((a,b)=>a.o-b.o).forEach(n=>{
       const pad=depth*12;
       if(n.t==='F'){
-        html+=`<div style="padding:5px 8px 5px ${8+pad}px;font-size:11px;color:var(--tx3);font-weight:600">${n.icon||'📁'} ${n.n}</div>`;
-        buildWork(n.id,depth+1);
+        html+=`<div style="padding:4px 8px 4px ${8+pad}px;font-size:11px;color:var(--tx3);font-weight:600">${n.icon||'📁'} ${n.n}</div>`;
+        buildNotes(n.id,depth+1);
       } else {
-        html+=`<div class="srch-item" style="padding:5px ${8+pad}px" onclick="xPanelLoadWork('${n.id}')">${n.icon||'📄'} ${n.n}</div>`;
+        const isCur=n.id===S.p1;
+        html+=`<div class="srch-item" style="padding:4px ${8+pad}px;${isCur?'color:var(--ac);font-weight:600':''}" onclick="xPanelLoadNotes2('${n.id}')">${n.icon||'📄'} ${n.n}${isCur?' (현재)':''}</div>`;
       }
     });
   }
-  buildWork(null,0);
-  // 월간스케줄: 현재 달 기준 전월/현재/다음월
-  html+='<div class="srch-group" style="padding:6px 8px;margin-top:4px">📅 월간스케줄</div>';
-  const _months=[];
-  // 전월
-  let pm=S.sm-1,py=S.sy;
-  if(pm<1){pm=12;py--;}
-  _months.push({y:py,m:pm});
-  // 현재
-  _months.push({y:S.sy,m:S.sm});
-  // 다음월
-  let nm=S.sm+1,ny=S.sy;
-  if(nm>12){nm=1;ny++;}
-  _months.push({y:ny,m:nm});
-  _months.forEach(({y,m})=>{
-    html+=`<div class="srch-item" style="padding:5px 8px" onclick="xPanelLoadSched(${y},${m})">📅 ${y}년 ${m}월 스케줄</div>`;
+  buildNotes(null,0);
+
+  // ── 작품 도구 탭 집필 문서
+  const pubDocs=S.pub.filter(n=>n.t==='D'&&n.mt&&['WTR','WIM','WWS','WSY','WCS','WTL','WRM','WED','WGS','WPT'].includes(n.mt));
+  if(pubDocs.length){
+    html+='<div class="srch-group" style="padding:6px 8px;margin-top:4px">📖 작품 도구</div>';
+    pubDocs.forEach(n=>{
+      html+=`<div class="srch-item" style="padding:4px 8px" onclick="xPanelLoadPub('${n.id}')">${n.icon||'📄'} ${n.n}</div>`;
+    });
+  }
+
+  // ── 스케줄
+  html+='<div class="srch-group" style="padding:6px 8px;margin-top:4px">📅 스케줄</div>';
+  let pm=S.sm-1,py=S.sy; if(pm<1){pm=12;py--;}
+  let nm=S.sm+1,ny=S.sy; if(nm>12){nm=1;ny++;}
+  [{y:py,m:pm},{y:S.sy,m:S.sm},{y:ny,m:nm}].forEach(({y,m})=>{
+    html+=`<div class="srch-item" style="padding:4px 8px" onclick="xPanelLoadSched(${y},${m})">📅 ${y}년 ${m}월</div>`;
   });
+
   html+='</div>';
   menu.innerHTML=html;menu.style.display='block';
   setTimeout(()=>document.addEventListener('click',closeXMenu,{once:true}),10);
 }
 function closeXMenu(){const m=document.getElementById('xpanel-menu');if(m)m.style.display='none';}
-function xPanelLoadWork(id){
+
+// ep2에 집필 탭 문서 로드
+function xPanelLoadNotes2(id){
   closeXMenu();
-  if(!S.p2on){S.p2on=true;document.getElementById('ep2').style.display='flex';document.getElementById('splitbtn').textContent='단일 보기';}
-  const node=S.work.find(n=>n.id===id&&n.t==='D');if(!node)return;
-  const t=document.getElementById('et2');const ew=document.getElementById('ew2');const ee=document.getElementById('ee2');
-  t.textContent=(node.icon||'📄')+' '+node.n+' (통합문서)';t.className='etitle';
-  ee.style.display='none';ew.classList.remove('hidden');
-  _ep2Source='work';
-  S.p2=node.id;
-  if(EDITORS.e2){EDITORS.e2.html=node.content||'';updateWC('wc2',node.content||'');}
-  // 편집 가능 처리
-  const ed2=document.getElementById('eq2');if(ed2)ed2.contentEditable='true';
-  const badge=document.getElementById('readonly-badge2');if(badge){badge.textContent='통합문서';badge.classList.remove('on');}
-  // 새로고침 버튼 표시
+  _ep2Open();
+  const node=S.notes.find(n=>n.id===id&&n.t==='D');if(!node)return;
+  const t=document.getElementById('et2');
+  t.textContent=(node.icon||'📄')+' '+node.n;t.className='etitle';
+  document.getElementById('ee2').style.display='none';
+  document.getElementById('ew2').classList.remove('hidden');
+  _ep2Source='notes'; S.p2=node.id;
+  if(EDITORS.e2){EDITORS.e2.html=node.c||'';updateWC('wc2',node.c||'');}
+  const ed2=document.getElementById('eq2');if(ed2)ed2.contentEditable=node.locked?'false':'true';
+  const badge=document.getElementById('readonly-badge2');
+  if(badge){badge.textContent=node.locked?'읽기전용':'';badge.classList.toggle('on',!!node.locked);}
   const rbtn=document.getElementById('ep2-refresh-btn');if(rbtn)rbtn.style.display='';
-  renderWorkBar();
+}
+
+// ep2에 작품 도구 탭 문서 로드
+function xPanelLoadPub(id){
+  closeXMenu();
+  _ep2Open();
+  const node=S.pub.find(n=>n.id===id&&n.t==='D');if(!node)return;
+  const t=document.getElementById('et2');
+  t.textContent=(node.icon||'📄')+' '+node.n+' (작품 도구)';t.className='etitle';
+  document.getElementById('ee2').style.display='none';
+  document.getElementById('ew2').classList.remove('hidden');
+  _ep2Source='pub'; S.p2=node.id;
+  if(EDITORS.e2){EDITORS.e2.html=node.content||'';updateWC('wc2',node.content||'');}
+  const ed2=document.getElementById('eq2');if(ed2)ed2.contentEditable='true';
+  const badge=document.getElementById('readonly-badge2');
+  if(badge){badge.textContent='작품 도구';badge.classList.remove('on');}
+  const rbtn=document.getElementById('ep2-refresh-btn');if(rbtn)rbtn.style.display='';
+}
+
+// ep2 패널 열기 공통 헬퍼
+function _ep2Open(){
+  if(!S.p2on){
+    S.p2on=true;
+    document.getElementById('ep2').style.display='flex';
+    document.getElementById('splitbtn').textContent='단일 보기';
+    S.ap=2;
+  }
 }
 function xPanelLoadSched(y, m){
   closeXMenu();
-  if(!S.p2on){S.p2on=true;document.getElementById('ep2').style.display='flex';document.getElementById('splitbtn').textContent='단일 보기';}
+  _ep2Open();
   const ty=y||S.sy, tm=m||S.sm;
-  const t=document.getElementById('et2');const ew=document.getElementById('ew2');const ee=document.getElementById('ee2');
+  const t=document.getElementById('et2');
   t.textContent=`📅 ${ty}년 ${tm}월 스케줄`;t.className='etitle';
-  ee.style.display='none';ew.classList.remove('hidden');
+  document.getElementById('ee2').style.display='none';
+  document.getElementById('ew2').classList.remove('hidden');
   _ep2Source='sched';S.p2=null;
   const wks=getWeeks(ty,tm);
   const now=new Date();const todayY=now.getFullYear(),todayM=now.getMonth()+1,todayD=now.getDate();
@@ -11502,7 +11563,7 @@ function xPanelLoadSched(y, m){
       wk.forEach((d,di)=>{
         const isT=isTM&&d===todayD;
         const val=d?getCell(ty,tm,wi,ch,di):'';
-        schedHtml+=`<td style="border:1px solid var(--bdr);padding:2px 4px;min-width:50px;background:${isT?'rgba(56,139,253,.07)':'transparent'}">${val}</td>`;
+        schedHtml+=`<td style="border:1px solid var(--bdr);padding:2px 4px;min-width:50px;background:${isT?'rgba(56,139,253,.07)':'transparent'}">${val||''}</td>`;
       });
       schedHtml+='</tr>';
     });
@@ -11511,8 +11572,8 @@ function xPanelLoadSched(y, m){
   schedHtml+='</div>';
   if(EDITORS.e2){EDITORS.e2.html=schedHtml;updateWC('wc2','');}
   const ed2=document.getElementById('eq2');if(ed2)ed2.contentEditable='false';
-  const badge=document.getElementById('readonly-badge2');if(badge){badge.textContent='스케줄';badge.classList.add('on');}
-  // 새로고침 버튼 표시
+  const badge=document.getElementById('readonly-badge2');
+  if(badge){badge.textContent='스케줄 (읽기전용)';badge.classList.add('on');}
   const rbtn=document.getElementById('ep2-refresh-btn');if(rbtn)rbtn.style.display='';
 }
 
