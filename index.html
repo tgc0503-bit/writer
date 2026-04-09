@@ -2039,9 +2039,12 @@ input[type=number]{-moz-appearance:textfield}
           <span class="sblabel">작품 도구</span>
           <div style="display:flex;gap:4px">
             <button class="icobtn" title="폴더 추가" onclick="pubAddFolder()">📁</button>
-            <button class="icobtn" title="도구 추가" onclick="pubShowToolPicker(event)">✨</button>
             <button class="icobtn" title="문서 추가" onclick="pubAddDoc()">📄</button>
           </div>
+        </div>
+        <div id="pub-tree-hint" style="font-size:11px;color:var(--tx3);padding:12px 10px;line-height:1.7;display:none">
+          📁 폴더를 먼저 만들고<br>
+          폴더 우클릭 → 도구 추가
         </div>
         <div class="treewrap" id="pubtreewrap"></div>
       </div>
@@ -3437,8 +3440,6 @@ const WRITING_TYPES = {
   WGS: {label:'용어 사전',      icon:'📚'},
   WTR: {label:'트리트먼트',     icon:'📋'},
   WIM: {label:'아이디어 메모',  icon:'💡'},
-  WED: {label:'집필 에디터',    icon:'✏️'},
-  WPT: {label:'진행률 트래커',  icon:'📊'},
 };
 
 let _writingSel = null;
@@ -3446,45 +3447,8 @@ let _writingSel = null;
 // isWriting 플래그 없이 어느 폴더/항목에서나 집필 도구 사용 가능
 function _isWritingItem(nodeId){ return true; }
 
-// ── 도구 추가 팝업 ──
-function pubShowToolPicker(e){
-  e.stopPropagation();
-  document.getElementById('mb_toolpick')?.remove();
-  const sel = _pubSel ? S.pub.find(n=>n.id===_pubSel) : null;
-  const pid = sel ? (sel.t==='F'?sel.id : (sel.t==='I'?sel.id : sel.p||null)) : null;
-
-  const pop = document.createElement('div');
-  pop.id = 'mb_toolpick';
-  pop.style.cssText = `position:fixed;background:var(--surf);border:1px solid var(--bdr);border-radius:10px;padding:10px;z-index:4000;box-shadow:0 4px 20px rgba(0,0,0,.25);min-width:200px`;
-
-  const hdr = document.createElement('div');
-  hdr.style.cssText = 'font-size:11px;color:var(--tx3);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--bdr)';
-  hdr.textContent = pid ? '도구를 선택하세요' : '📁 폴더를 먼저 선택하세요';
-  pop.appendChild(hdr);
-
-  if(pid){
-    const grid = document.createElement('div');
-    grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:4px';
-    Object.entries(WRITING_TYPES).forEach(([type, info])=>{
-      const btn = document.createElement('button');
-      btn.style.cssText = 'display:flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid var(--bdr);border-radius:6px;background:var(--surf2);color:var(--tx);font-size:12px;cursor:pointer;text-align:left;transition:background .1s';
-      btn.innerHTML = `<span style="font-size:16px">${info.icon}</span>${info.label}`;
-      btn.onmouseover = ()=>btn.style.background='var(--surf3)';
-      btn.onmouseout  = ()=>btn.style.background='var(--surf2)';
-      btn.onclick = ()=>{ pubAddWritingNode(pid, type); pop.remove(); };
-      grid.appendChild(btn);
-    });
-    pop.appendChild(grid);
-  }
-
-  const r = e.target.getBoundingClientRect();
-  pop.style.left = Math.min(r.left, window.innerWidth-220)+'px';
-  pop.style.top  = r.bottom+4+'px';
-  document.body.appendChild(pop);
-  setTimeout(()=>document.addEventListener('click',function h(ev){
-    if(!pop.contains(ev.target)){pop.remove();document.removeEventListener('click',h);}
-  },100));
-}
+// ── 도구 추가는 우클릭 메뉴에서만 (pubShowToolPickerTo 사용)
+// pubShowToolPicker 사이드바 버튼 제거됨
 
 // 특정 parentId 지정 버전 (우클릭 메뉴에서 호출)
 function pubShowToolPickerTo(parentId){
@@ -3583,14 +3547,11 @@ function pubOpenWritingNode(node){
     WTL: renderWritingTL,
     WRM: renderWritingRM,
     WGS: renderWritingGS,
-    WMB: renderWritingMB,
-    WPT: renderWritingPT,
-    WED: renderWritingED,
   };
   const fn = renderers[node.t];
   if(fn) fn(node, content);
   else {
-    content.innerHTML = `<div style="padding:40px;text-align:center;color:var(--tx3)">🚧 준비 중입니다 (${node.t})</div>`;
+    content.innerHTML = `<div style="padding:40px;text-align:center;color:var(--tx3)">🚧 준비 중 (${node.t})</div>`;
   }
   saveLastSession();
 }
@@ -4888,6 +4849,9 @@ function pubClearDC(wrap){wrap.querySelectorAll('.drop-before,.drop-after,.drop-
 function renderPubTree(){
   const wrap=document.getElementById('pubtreewrap');if(!wrap)return;
   wrap.innerHTML='';
+  // 항목 있으면 힌트 숨김
+  const hint=document.getElementById('pub-tree-hint');
+  if(hint) hint.style.display=S.pub.length?'none':'block';
   buildPubTree(wrap,null,0);
   setTimeout(()=>_bindTreeLongPress(wrap),50);
 }
@@ -11676,7 +11640,7 @@ function toggleXPanel(e){
   buildNotes(null,0);
 
   // ── 작품 도구 탭 집필 문서
-  const pubDocs=S.pub.filter(n=>n.t==='D'&&n.mt&&['WTR','WIM','WWS','WSY','WCS','WTL','WRM','WED','WGS','WPT'].includes(n.mt));
+  const pubDocs=S.pub.filter(n=>n.t==='D'&&n.mt&&['WTR','WIM','WWS','WSY','WCS','WTL','WRM','WGS'].includes(n.mt));
   if(pubDocs.length){
     html+='<div class="srch-group" style="padding:6px 8px;margin-top:4px">📖 작품 도구</div>';
     pubDocs.forEach(n=>{
