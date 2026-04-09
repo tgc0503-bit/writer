@@ -3286,7 +3286,7 @@ function checkClockout(){
     }
   }
 
-  // ── 월간보고서 마감 알림 (오전 9:10) ──
+  // ── 연재 마감 알림 (오전 9:10) ──
   if(cfg.deadline?.on && H===9 && M===10){
     const dlKey='dl_'+dateKey;
     if(_clkShown!==dlKey){
@@ -3510,6 +3510,9 @@ function pubShowToolPickerTo(parentId){
     if(!pop.contains(ev.target)){pop.remove();document.removeEventListener('click',h);}
   },100));
 }
+
+// 집필 전용 노드 추가 (폴더 또는 항목 하위에 직접)
+function pubAddWritingNode(parentId, type){
   const par = S.pub.find(n=>n.id===parentId);
   if(par) par.open = true;
   const mo = pubKids(parentId).reduce((m,n)=>Math.max(m,n.o),-1);
@@ -11149,13 +11152,13 @@ function renderClients(){
   const c=document.getElementById('cleditor');c.innerHTML='';
   S.clients.forEach((cl,i)=>{
     const card=document.createElement('div');card.className='cccard';
-    card.innerHTML=`<div class="ccrow"><input type="color" value="${cl.color}" onchange="S.clients[${i}].color=this.value;save();updateTracker()"><input type="text" class="ccinput" value="${cl.name}" placeholder="작품명" style="flex:1;max-width:160px" oninput="S.clients[${i}].name=this.value;save()"><span style="font-size:11px;color:var(--tx3)">키워드</span><input type="text" class="ccinput" value="${cl.kw}" placeholder="ex)동탄" style="max-width:70px" oninput="S.clients[${i}].kw=this.value;save();updateTracker()"><button class="btn btnr" style="padding:4px 8px;font-size:11px" onclick="removeClient(${i})">삭제</button></div><div style="font-size:10px;color:var(--tx3);margin-bottom:5px;font-weight:700">월간 할당량</div><div class="qgrid">${CH.map(ch=>`<div class="qitem"><label>${ch}</label><input type="number" class="qinput" min="0" value="${cl.q?.[ch]||0}" onchange="S.clients[${i}].q['${ch}']=parseInt(this.value)||0;save();updateTracker()"></div>`).join('')}</div>`;
+    card.innerHTML=`<div class="ccrow"><input type="color" value="${cl.color}" onchange="S.clients[${i}].color=this.value;save();updateTracker()"><input type="text" class="ccinput" value="${cl.name}" placeholder="작품명" style="flex:1;max-width:160px" oninput="S.clients[${i}].name=this.value;save()"><span style="font-size:11px;color:var(--tx3)">키워드</span><input type="text" class="ccinput" value="${cl.kw}" placeholder="ex)클래식" style="max-width:70px" oninput="S.clients[${i}].kw=this.value;save();updateTracker()"><button class="btn btnr" style="padding:4px 8px;font-size:11px" onclick="removeClient(${i})">삭제</button></div><div style="font-size:10px;color:var(--tx3);margin-bottom:5px;font-weight:700">월간 목표</div><div class="qgrid">${CH.map(ch=>`<div class="qitem"><label>${ch}</label><input type="number" class="qinput" min="0" value="${cl.q?.[ch]||0}" onchange="S.clients[${i}].q['${ch}']=parseInt(this.value)||0;save();updateTracker()"></div>`).join('')}</div>`;
     c.appendChild(card);
   });
 }
 function addClient(){
-  S.clients.push({id:uid(),name:'새 클라이언트',kw:'키워드',color:'#'+Math.floor(Math.random()*0xffffff).toString(16).padStart(6,'0'),q:Object.fromEntries(CH.map(ch=>[ch,0]))});
-  save();renderClients();toast('클라이언트가 추가되었습니다.');
+  S.clients.push({id:uid(),name:'새 작품',kw:'키워드',color:'#'+Math.floor(Math.random()*0xffffff).toString(16).padStart(6,'0'),q:Object.fromEntries(CH.map(ch=>[ch,0]))});
+  save();renderClients();toast('작품이 추가되었습니다.');
 }
 function removeClient(i){
   if(!confirm(`"${S.clients[i].name}" 삭제하시겠습니까?`))return;
@@ -11492,29 +11495,20 @@ function doSearch(q){
   const kw=q.toLowerCase();
   const hl=s=>s.replace(new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi'),m=>`<span class="srch-hl">${m}</span>`);
   let html='';
-  // 클라이언트 노트
+  // 집필 문서
   const notes=S.notes.filter(n=>n.t==='D'&&((n.n||'').toLowerCase().includes(kw)||(n.c||'').toLowerCase().includes(kw)));
   if(notes.length){
-    html+=`<div class="srch-group">📝 클라이언트 노트 (${notes.length})</div>`;
+    html+=`<div class="srch-group">✍️ 집필 (${notes.length})</div>`;
     notes.slice(0,8).forEach(n=>{
       const preview=(n.c||'').replace(/<[^>]*>/g,'').slice(0,80);
       html+=`<div class="srch-item" onclick="srchGoNote('${n.id}')"><span style="font-size:14px">📄</span><div style="min-width:0"><div class="srch-item-title">${hl(n.n||'')}</div><div class="srch-item-preview">${hl(preview)}</div></div></div>`;
-    });
-  }
-  // 업무 노트
-  const works=S.work.filter(n=>n.t==='D'&&((n.n||'').toLowerCase().includes(kw)||(n.content||'').toLowerCase().includes(kw)));
-  if(works.length){
-    html+=`<div class="srch-group">🗂 통합문서 (${works.length})</div>`;
-    works.slice(0,8).forEach(n=>{
-      const preview=(n.content||'').replace(/<[^>]*>/g,'').slice(0,80);
-      html+=`<div class="srch-item" onclick="srchGoWork('${n.id}')"><span style="font-size:14px">${n.icon||'📄'}</span><div style="min-width:0"><div class="srch-item-title">${hl(n.n||'')}</div><div class="srch-item-preview">${hl(preview)}</div></div></div>`;
     });
   }
   if(!html){html='<div style="padding:14px 10px;font-size:12px;color:var(--tx3)">검색 결과가 없습니다.</div>';}
   res.innerHTML=html;res.className='srch-results has-results';
 }
 function srchGoNote(id){closeSearch();switchTab('notes');setTimeout(()=>openDoc(id),80);}
-function srchGoWork(id){closeSearch();switchTab('work');setTimeout(()=>selectWork(id),80);}
+function srchGoWork(id){closeSearch();} // work 탭 제거됨 — no-op
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //  창 분할 — 다른 탭 문서 가져오기
@@ -11698,11 +11692,6 @@ function toggleExportMenu(menuId){
   }
 }
 function getActiveEditorContent(){
-  const tab=document.querySelector('.tbtn.on')?.id?.replace('tb-','');
-  if(tab==='work'){
-    const nd=S.work.find(n=>n.id===S.wsel);
-    return{html:EDITORS.we?.html||'',title:nd?.n||'문서',el:document.getElementById('weq')};
-  }
   const nd=S.notes.find(n=>n.id===S.p1);
   return{html:EDITORS.e1?.html||'',title:nd?.n||'문서',el:document.getElementById('eq1')};
 }
@@ -11828,17 +11817,14 @@ document.getElementById('srch-input')?.addEventListener('input',e=>doSearch(e.ta
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //  모바일 UI
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-const TAB_LABELS={'notes':'클라이언트','work':'통합문서','sched':'월간스케줄','report':'월간보고서','settings':'설정'};
+const TAB_LABELS={'notes':'집필','sched':'스케줄','report':'자료실','pub':'작품 도구','settings':'설정'};
 function mobSwitchTab(t){
   switchTab(t);
-  // 하단 탭 활성화
-  ['notes','work','sched','report','settings'].forEach(tab=>{
+  ['notes','sched','report','pub','settings'].forEach(tab=>{
     const b=document.getElementById('mob-tb-'+tab);
     if(b)b.classList.toggle('on',tab===t);
   });
-  // 탭명 업데이트
   const ct=document.getElementById('mob-curtab');if(ct)ct.textContent=TAB_LABELS[t]||'';
-  // 탭 전환 시 사이드바 닫기
   mobCloseSidebar();
 }
 function mobToggleSidebar(){
