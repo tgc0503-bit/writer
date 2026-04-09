@@ -4384,26 +4384,24 @@ const CS_DEFAULT_TEMPLATE = [
   ]},
 ];
 
-// 작품 항목 단위 템플릿 관리
-function _csGetTemplate(itemId){
-  const item = S.pub.find(n=>n.id===itemId);
-  if(!item) return JSON.parse(JSON.stringify(CS_DEFAULT_TEMPLATE));
-  if(!item.charTemplate) item.charTemplate = JSON.parse(JSON.stringify(CS_DEFAULT_TEMPLATE));
-  return item.charTemplate;
+// 노드별 독립 템플릿 관리 (부모 공유 → 각 캐릭터 독립)
+function _csGetTemplate(nodeId){
+  const node = S.pub.find(n=>n.id===nodeId);
+  if(!node) return JSON.parse(JSON.stringify(CS_DEFAULT_TEMPLATE));
+  if(!node.charTemplate) node.charTemplate = JSON.parse(JSON.stringify(CS_DEFAULT_TEMPLATE));
+  return node.charTemplate;
 }
-function _csSaveTemplate(itemId, tpl){
-  const item = S.pub.find(n=>n.id===itemId);
-  if(!item) return;
-  item.charTemplate = tpl;
+function _csSaveTemplate(nodeId, tpl){
+  const node = S.pub.find(n=>n.id===nodeId);
+  if(!node) return;
+  node.charTemplate = tpl;
   dsave();
 }
 
-// ── 캐릭터 시트 렌더 ──
 function renderWritingCS(node, container){
   container.innerHTML = '';
   const d = node.data || {};
-  const itemId = node.p;
-  const tpl = _csGetTemplate(itemId);
+  const tpl = _csGetTemplate(node.id); // 노드별 독립 템플릿
 
   // 툴바
   const tb = document.createElement('div');
@@ -4494,7 +4492,7 @@ function renderWritingCS(node, container){
   const catsWrap = document.createElement('div');
   catsWrap.className = 'cs-trait-cats';
   catsWrap.id = 'cs-traits-'+node.id;
-  _csRenderTraitPanel(catsWrap, node, container, itemId, tpl, d);
+  _csRenderTraitPanel(catsWrap, node, container, node.id, tpl, d);
   right.appendChild(catsWrap);
 
   // 커스텀 항목 추가
@@ -4508,14 +4506,10 @@ function renderWritingCS(node, container){
     if(!catName||!catName.trim()) return;
     const label = prompt('항목 이름:');
     if(!label||!label.trim()) return;
-    // 기존 카테고리 찾기
     let cat = tpl.find(c=>c.cat===catName.trim());
-    if(!cat){
-      cat = {cat:catName.trim(), desc:'', items:[]};
-      tpl.push(cat);
-    }
+    if(!cat){ cat = {cat:catName.trim(), desc:'', items:[]}; tpl.push(cat); }
     cat.items.push({id:'c_'+Date.now(), label:label.trim(), on:true, custom:true});
-    _csSaveTemplate(itemId, tpl);
+    _csSaveTemplate(node.id, tpl);
     renderWritingCS(node, container);
   };
   addWrap.appendChild(addBtn);
@@ -8204,7 +8198,6 @@ let _rmNode = null;
 let _rmCvWrap = null;
 let _rmSvg = null;
 let _rmD_global = null;
-let _rmGlobalBound = false;
 
 // 관계선 색상 팔레트
 const RM_REL_COLORS = ['#388bfd','#3fb950','#f85149','#d29922','#bc8cff','#ff7b72','#56d364','#58a6ff'];
@@ -9544,7 +9537,7 @@ function _gsCreateRow(row, ri, node, d, tab, body){
 
 function renderWritingRM(node, container){
   container.innerHTML = '';
-  _rmNode = node; _rmGlobalBound = false;
+  _rmNode = node;
   const d = node.data || {};
   if(!d.chars) d.chars = [];
   if(!d.rels)  d.rels  = [];
@@ -9614,10 +9607,12 @@ function renderWritingRM(node, container){
 // ── 사이드 패널: 캐릭터 목록 ──
 function _rmRenderSide(sideEl, node, d, cvWrap, svg){
   sideEl.innerHTML = '';
-  const itemId = node.p;
-  const csNodes = S.pub.filter(n=>n.p===itemId && n.t==='WCS');
+  // 같은 최상위 폴더 하위의 모든 WCS 찾기 (폴더 깊이 무관)
+  function getRootId(id){ let n=S.pub.find(x=>x.id===id); while(n&&n.p!==null) n=S.pub.find(x=>x.id===n.p); return n?.id||id; }
+  const myRoot = getRootId(node.id);
+  const csNodes = S.pub.filter(n=>n.t==='WCS' && getRootId(n.id)===myRoot);
   if(!csNodes.length){
-    sideEl.innerHTML = '<div style="font-size:11px;color:var(--tx3);padding:8px">캐릭터 시트가 없습니다.<br>먼저 캐릭터 시트를 추가하세요.</div>';
+    sideEl.innerHTML = '<div style="font-size:11px;color:var(--tx3);padding:8px 12px;line-height:1.6">같은 폴더에 캐릭터 시트가<br>없습니다.<br><br>✨ 도구 추가에서<br>캐릭터 시트를 먼저 추가하세요.</div>';
     return;
   }
   csNodes.forEach(cs=>{
@@ -9626,8 +9621,8 @@ function _rmRenderSide(sideEl, node, d, cvWrap, svg){
     row.className = 'rm-side-item' + (already?' added':'');
     const ico = document.createElement('span');
     ico.style.cssText='font-size:16px;flex-shrink:0';
-    ico.textContent = cs.data?.image ? '' : '👤';
-    if(cs.data?.image){ const img=document.createElement('img'); img.src=cs.data.image; img.style.cssText='width:22px;height:22px;border-radius:50%;object-fit:cover'; ico.appendChild(img); }
+    if(cs.data?.image){ const img=document.createElement('img'); img.src=cs.data.image; img.style.cssText='width:22px;height:22px;border-radius:50%;object-fit:cover;flex-shrink:0'; ico.textContent=''; ico.appendChild(img); }
+    else ico.textContent='👤';
     const name = document.createElement('span');
     name.style.cssText='flex:1;font-size:11px;color:var(--tx2)';
     name.textContent = cs.data?.name || cs.n;
@@ -9640,12 +9635,11 @@ function _rmRenderSide(sideEl, node, d, cvWrap, svg){
         d.chars = d.chars.filter(c=>c.csNodeId!==cs.id);
         d.rels  = d.rels.filter(r=>r.from!==already.id && r.to!==already.id);
       } else {
-        const cx = 80 + Math.random()*260;
-        const cy = 60 + Math.random()*180;
+        const cx = 60 + Math.random()*300;
+        const cy = 40 + Math.random()*200;
         d.chars.push({id:'rc'+Date.now(), csNodeId:cs.id, x:cx, y:cy});
       }
       _saveWritingData(node.id, {chars:[...d.chars], rels:[...d.rels]});
-      // 전체 재렌더
       const cont = document.getElementById('pub-writing-content');
       if(cont){ cont.innerHTML=''; renderWritingRM(node, cont); }
     };
@@ -9685,11 +9679,13 @@ function _rmRenderCard(ch, cvWrap, node, d, svg){
     const dot = document.createElement('div');
     dot.className = 'rm-connect-dot '+pos;
     dot.title = '드래그하여 관계 연결';
-    dot.addEventListener('mousedown', e=>{
+    dot.addEventListener('pointerdown', e=>{
       e.stopPropagation(); e.preventDefault();
       const rect = cvWrap.getBoundingClientRect();
-      const cx = ch.x + 55; // 카드 중심 x
-      const cy = ch.y + 55; // 카드 중심 y
+      const cardEl = document.getElementById('rm-card-'+ch.id);
+      const cardRect = cardEl ? cardEl.getBoundingClientRect() : null;
+      const cx = cardEl ? (cardRect.left - rect.left + cardRect.width/2) : ch.x + 60;
+      const cy = cardEl ? (cardRect.top  - rect.top  + cardRect.height/2) : ch.y + 65;
       _rmConnecting = {fromId: ch.id, startX: cx, startY: cy};
       _rmNode = node; _rmD_global = d; _rmCvWrap = cvWrap; _rmSvg = svg;
       document.body.style.cursor='crosshair';
@@ -9701,8 +9697,8 @@ function _rmRenderCard(ch, cvWrap, node, d, svg){
   card.addEventListener('contextmenu', e=>{
     _rmCardContextMenu(e, ch, node, d, cvWrap, svg);
   });
-  // 카드 드래그 이동
-  card.addEventListener('mousedown', e=>{
+  // 카드 드래그 이동 (pointer events)
+  card.addEventListener('pointerdown', e=>{
     if(e.target.classList.contains('rm-connect-dot')) return;
     e.preventDefault();
     _rmDragCard = ch;
@@ -9711,6 +9707,7 @@ function _rmRenderCard(ch, cvWrap, node, d, svg){
     _rmDragOffX = e.clientX - rect.left - ch.x;
     _rmDragOffY = e.clientY - rect.top  - ch.y;
     card.style.zIndex = '30';
+    card.setPointerCapture(e.pointerId);
   });
 
   cvWrap.appendChild(card);
@@ -9784,48 +9781,48 @@ function _rmDrawPreviewLine(svg, x1,y1,x2,y2){
 }
 
 
-// 관계도 전역 이벤트 단일 등록
-function _rmBindGlobalEvents(){
-  if(_rmGlobalBound) return;
-  _rmGlobalBound = true;
+let _rmEventAC = null; // AbortController — 이전 이벤트 리스너 제거용
 
-  document.addEventListener('mousemove', e=>{
+// 관계도 전역 이벤트 등록 (매 렌더마다 이전 리스너 제거 후 재등록)
+function _rmBindGlobalEvents(){
+  if(_rmEventAC) _rmEventAC.abort(); // 이전 리스너 전부 제거
+  _rmEventAC = new AbortController();
+  const sig = {signal: _rmEventAC.signal};
+
+  document.addEventListener('pointermove', e=>{
     if(!_rmCvWrap) return;
-    // 카드 드래그
     if(_rmDragCard){
       const rect=_rmCvWrap.getBoundingClientRect();
-      const nx=Math.max(0,Math.min(rect.width-110,e.clientX-rect.left-_rmDragOffX));
-      const ny=Math.max(0,Math.min(rect.height-120,e.clientY-rect.top-_rmDragOffY));
+      const nx=Math.max(0,Math.min(rect.width-120,e.clientX-rect.left-_rmDragOffX));
+      const ny=Math.max(0,Math.min(rect.height-130,e.clientY-rect.top-_rmDragOffY));
       _rmDragCard.x=nx; _rmDragCard.y=ny;
       const el=document.getElementById('rm-card-'+_rmDragCard.id);
       if(el){el.style.left=nx+'px';el.style.top=ny+'px';}
       if(_rmSvg) _rmDrawAllLinesV2(_rmSvg, _rmD_global, _rmCvWrap);
     }
-    // 연결선 미리보기
     if(_rmConnecting && _rmSvg){
       const rect=_rmCvWrap.getBoundingClientRect();
       _rmDrawPreviewLine(_rmSvg, _rmConnecting.startX, _rmConnecting.startY, e.clientX-rect.left, e.clientY-rect.top);
     }
-  });
+  }, sig);
 
-  document.addEventListener('mouseup', e=>{
-    // 카드 이동 완료
+  document.addEventListener('pointerup', e=>{
     if(_rmDragCard && _rmNode){
       _saveWritingData(_rmNode.id,{chars:[..._rmD_global.chars]});
       _rmDragCard=null;
     }
-    // 연결선 완료
+    document.body.style.cursor='';
     if(_rmConnecting && _rmCvWrap){
       const rect=_rmCvWrap.getBoundingClientRect();
       const mx=e.clientX-rect.left, my=e.clientY-rect.top;
       const target=(_rmD_global.chars||[]).find(ch=>{
         if(ch.id===_rmConnecting.fromId) return false;
-        return mx>=ch.x&&mx<=ch.x+110&&my>=ch.y&&my<=ch.y+120;
+        return mx>=ch.x&&mx<=ch.x+120&&my>=ch.y&&my<=ch.y+130;
       });
       if(target) _rmOpenRelPopupV2(e, _rmConnecting.fromId, target.id, _rmNode, _rmD_global, _rmCvWrap);
       _rmCancelConnect(_rmNode, _rmD_global);
     }
-  });
+  }, sig);
 }
 
 function _rmCancelConnect(node,d){
@@ -9936,18 +9933,14 @@ const RM_LINE_STYLES = [
   { id:'cross',    label:'단절(X)',   dashArray:'6,4',       strokeWidth:2, cross:true },
 ];
 
-// _rmDrawLine 전체 교체 (선 스타일 완전 지원)
 function _rmDrawLineSt(svg, x1,y1,x2,y2, rel, d){
   const g = document.createElementNS('http://www.w3.org/2000/svg','g');
   const style = RM_LINE_STYLES.find(s=>s.id===rel.lineStyle) || RM_LINE_STYLES[0];
   const color = rel.color || '#388bfd';
   const sw = style.strokeWidth;
-
-  // 마커 ID
   const markerId = 'arrow-'+rel.id;
   const markerIdB = 'arrowB-'+rel.id;
 
-  // defs (화살표)
   const mkMarker=(id,col)=>{
     const m=document.createElementNS('http://www.w3.org/2000/svg','marker');
     m.setAttribute('id',id); m.setAttribute('markerWidth','8'); m.setAttribute('markerHeight','8');
@@ -9956,7 +9949,6 @@ function _rmDrawLineSt(svg, x1,y1,x2,y2, rel, d){
     p.setAttribute('d','M0,0 L0,6 L8,3 z'); p.setAttribute('fill',col);
     m.appendChild(p); return m;
   };
-
   if(rel.dir==='to'||rel.dir==='both'){
     const defs=document.createElementNS('http://www.w3.org/2000/svg','defs');
     defs.appendChild(mkMarker(markerId,color));
@@ -9964,28 +9956,36 @@ function _rmDrawLineSt(svg, x1,y1,x2,y2, rel, d){
     svg.appendChild(defs);
   }
 
-  // 물결선: SVG path로 그리기
+  const _addClickLine=(el)=>{
+    el.style.cursor='pointer'; el.style.pointerEvents='stroke';
+    el.addEventListener('click',e=>{e.stopPropagation();_rmEditRelPopupV2(e,rel,d,svg,_rmCvWrap);});
+  };
+
+  // 투명 두꺼운 히트존 (클릭 감도 향상)
+  const hitLine=document.createElementNS('http://www.w3.org/2000/svg','line');
+  hitLine.setAttribute('x1',x1); hitLine.setAttribute('y1',y1);
+  hitLine.setAttribute('x2',x2); hitLine.setAttribute('y2',y2);
+  hitLine.setAttribute('stroke','transparent'); hitLine.setAttribute('stroke-width','12');
+  hitLine.style.cursor='pointer'; hitLine.style.pointerEvents='stroke';
+  hitLine.addEventListener('click',e=>{e.stopPropagation();_rmEditRelPopupV2(e,rel,d,svg,_rmCvWrap);});
+  g.appendChild(hitLine);
+
   if(style.wave){
-    const dx=x2-x1, dy=y2-y1;
-    const len=Math.sqrt(dx*dx+dy*dy);
+    const dx=x2-x1, dy=y2-y1, len=Math.sqrt(dx*dx+dy*dy);
     const steps=Math.max(3,Math.floor(len/20));
     let pts=[];
     for(let i=0;i<=steps;i++){
-      const t=i/steps;
-      const bx=x1+dx*t, by=y1+dy*t;
+      const t=i/steps, bx=x1+dx*t, by=y1+dy*t;
       const perp=6*Math.sin(t*Math.PI*steps*0.5);
       const nx=-dy/len*perp, ny=dx/len*perp;
       pts.push(`${i===0?'M':'L'}${(bx+nx).toFixed(1)},${(by+ny).toFixed(1)}`);
     }
     const path=document.createElementNS('http://www.w3.org/2000/svg','path');
     path.setAttribute('d',pts.join(' '));
-    path.setAttribute('stroke',color); path.setAttribute('stroke-width',sw);
-    path.setAttribute('fill','none');
+    path.setAttribute('stroke',color); path.setAttribute('stroke-width',sw); path.setAttribute('fill','none');
     if(rel.dir==='to') path.setAttribute('marker-end',`url(#${markerId})`);
-    if(rel.dir==='both'){ path.setAttribute('marker-end',`url(#${markerId})`); path.setAttribute('marker-start',`url(#${markerIdB})`); }
-    path.style.cursor='pointer'; path.style.pointerEvents='stroke';
-    path.addEventListener('click',e=>{e.stopPropagation();_rmEditRelPopup(e,rel,d,svg);});
-    g.appendChild(path);
+    if(rel.dir==='both'){path.setAttribute('marker-end',`url(#${markerId})`);path.setAttribute('marker-start',`url(#${markerIdB})`);}
+    _addClickLine(path); g.appendChild(path);
   } else {
     const line=document.createElementNS('http://www.w3.org/2000/svg','line');
     line.setAttribute('x1',x1); line.setAttribute('y1',y1);
@@ -9993,10 +9993,8 @@ function _rmDrawLineSt(svg, x1,y1,x2,y2, rel, d){
     line.setAttribute('stroke',color); line.setAttribute('stroke-width',sw);
     if(style.dashArray) line.setAttribute('stroke-dasharray',style.dashArray);
     if(rel.dir==='to') line.setAttribute('marker-end',`url(#${markerId})`);
-    if(rel.dir==='both'){ line.setAttribute('marker-end',`url(#${markerId})`); line.setAttribute('marker-start',`url(#${markerIdB})`); }
-    line.style.cursor='pointer'; line.style.pointerEvents='stroke';
-    line.addEventListener('click',e=>{e.stopPropagation();_rmEditRelPopup(e,rel,d,svg);});
-    g.appendChild(line);
+    if(rel.dir==='both'){line.setAttribute('marker-end',`url(#${markerId})`);line.setAttribute('marker-start',`url(#${markerIdB})`);}
+    _addClickLine(line); g.appendChild(line);
 
     // X 표시 (단절)
     if(style.cross){
