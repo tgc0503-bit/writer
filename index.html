@@ -603,10 +603,17 @@ body{background:var(--bg);color:var(--tx);font-size:13px;line-height:1.5}
 .crow{display:grid;grid-template-columns:72px repeat(5,1fr);border-bottom:1px solid var(--bdr2)}
 .crow:last-child{border-bottom:none}
 .clabel{padding:4px 6px 4px 8px;font-size:11px;font-weight:600;color:var(--tx3);background:var(--surf);border-right:1px solid var(--bdr);display:flex;align-items:flex-start;padding-top:5px;white-space:nowrap}
-.scell{padding:3px 4px;border-right:1px solid var(--bdr2);min-height:30px;font-size:11px;line-height:1.5;color:var(--tx);outline:none;background:var(--bg);cursor:text;white-space:pre-wrap;word-break:break-all}
+.scell{padding:3px 4px;border-right:1px solid var(--bdr2);min-height:30px;font-size:11px;line-height:1.5;color:var(--tx);outline:none;background:var(--bg);cursor:pointer;white-space:pre-wrap;word-break:break-all;user-select:none}
 .scell:last-child{border-right:none}
-.scell:focus{background:rgba(56,139,253,.04)}
-.scell.off{background:var(--surf2);pointer-events:none}
+.scell:hover{background:rgba(56,139,253,.04)}
+.scell.off{background:var(--surf2);pointer-events:none;cursor:default}
+.scell-work{background:rgba(139,92,246,.08)!important;color:var(--tx)!important}
+.scell-work:hover{background:rgba(139,92,246,.14)!important}
+/* 스케줄 엔트리 팝업 */
+.sched-entry-pop{position:fixed;background:var(--surf);border:1px solid var(--bdr);border-radius:10px;padding:12px;z-index:4000;box-shadow:0 6px 24px rgba(0,0,0,.25);min-width:230px;max-width:280px}
+.sched-entry-pop select,.sched-entry-pop input[type=text],.sched-entry-pop input[type=number]{width:100%;padding:6px 9px;border:1px solid var(--bdr);border-radius:6px;background:var(--surf2);color:var(--tx);font-size:12px;font-family:inherit;outline:none;margin-bottom:6px;box-sizing:border-box}
+.sched-entry-pop select:focus,.sched-entry-pop input:focus{border-color:var(--ac)}
+.sep-label{font-size:10px;color:var(--tx3);margin-bottom:3px;margin-top:2px}
 
 /* Resize handle */
 .rhandle{width:5px;cursor:col-resize;background:var(--bdr);flex-shrink:0;transition:background .15s;z-index:10}
@@ -1991,8 +1998,8 @@ input[type=number]{-moz-appearance:textfield}
           </div>
           <div id="trkbody"></div>
           <div class="trklegend">
-            <div><span style="color:var(--gn)">■</span> 0 = 완료 &nbsp;<span style="color:var(--yw)">■</span> 1~2 = 마무리</div>
-            <div><span style="color:var(--tx2)">■</span> 3+ = 진행 &nbsp;<span style="color:var(--rd)">■</span> 음수 = 초과</div>
+            <div><span style="color:var(--gn)">■</span> + = 목표 초과 &nbsp;<span style="color:var(--rd)">■</span> - = 계획 부족</div>
+            <div><span style="color:var(--yw)">■</span> 목표의 30% 미만 잔여 &nbsp;<span style="color:var(--tx2)">■</span> 진행 중</div>
           </div>
           <div style="height:1px;background:var(--bdr);margin:10px 0"></div>
           <div class="trktitle" style="margin-bottom:6px">📋 작품별 월간 현황</div>
@@ -10644,43 +10651,24 @@ function renderSched(){clearMultiSel&&clearMultiSel();
         if(d){
           // 완결 행: 마감일 배지 표시
           if(ch==='완결'&&Object.keys(dls).length>0){
-            // 객체 구조: {키워드: 날짜} → 해당 날짜인 키워드 목록
-          const dueDls=Object.entries(dls).filter(([kw,day])=>day===d).map(([kw])=>kw);
+            const dueDls=Object.entries(dls).filter(([kw,day])=>day===d).map(([kw])=>kw);
             cell.className='scell'+(isToday?' today-col':'');
-            cell.contentEditable='true';
             if(dueDls.length>0){
-              // 배지 span 삽입 (contentEditable 안에 읽기전용 span)
               const badge=document.createElement('div');
-              badge.contentEditable='false';
-              badge.style.cssText='font-size:9px;color:#ef4444;background:rgba(239,68,68,0.1);border-radius:3px;padding:1px 4px;margin-bottom:2px;pointer-events:none;user-select:none;display:inline-block';
+              badge.style.cssText='font-size:9px;color:#ef4444;background:rgba(239,68,68,0.1);border-radius:3px;padding:1px 4px;margin-bottom:2px;display:inline-block';
               badge.textContent=dueDls.join(' · ')+' 마감';
               cell.appendChild(badge);
-              cell.appendChild(document.createElement('br'));
+              const br=document.createElement('br'); cell.appendChild(br);
             }
-            // 기존 텍스트 설정
-            const existingText=getCell(y,m,wi,ch,di);
-            if(existingText){
-              const txt=document.createTextNode(existingText);
-              cell.appendChild(txt);
-            }
-            let ct;
-            cell.addEventListener('input',()=>{
-              // badge div 제외한 텍스트만 추출
-              let text='';
-              cell.childNodes.forEach(node=>{
-                if(node.nodeType===3) text+=node.textContent;
-              });
-              setCell(y,m,wi,ch,di,text.trim());
-              clearTimeout(ct);ct=setTimeout(()=>{save();updateTracker();},350);
-            });
+            const txt=document.createTextNode(getCell(y,m,wi,ch,di)||'');
+            cell.appendChild(txt);
+            cell.addEventListener('click',e=>{e.stopPropagation();openSchedEntryPopup(cell,y,m,wi,ch,di);});
           } else {
-            cell.className='scell'+(isToday?' today-col':'');cell.contentEditable='true';
+            const val=getCell(y,m,wi,ch,di)||'';
+            cell.className='scell'+(isToday?' today-col':'')+(_schedIsWorkEntry(val)?' scell-work':'');
             cell.dataset.wi=wi;cell.dataset.chi=CH.indexOf(ch);cell.dataset.di=di;
-            cell.innerText=getCell(y,m,wi,ch,di);
-            let ct;cell.addEventListener('focus',()=>{handleCellFocus(cell,y,m,wi,ch,di);});
-            cell.addEventListener('input',()=>{handleCellInput(cell,y,m,wi,ch,di);clearTimeout(ct);ct=setTimeout(()=>{save();updateTracker();},350);});
-            cell.addEventListener('keydown',e=>{schedCellKey(e,cell);});
-            cell.addEventListener('click',e=>{handleCellClick(e,cell,y,m,wi,CH.indexOf(ch),di);});
+            cell.textContent=val;
+            cell.addEventListener('click',e=>{e.stopPropagation();openSchedEntryPopup(cell,y,m,wi,ch,di);});
           }
         }else{cell.className='scell off';}
         row.appendChild(cell);
@@ -10732,7 +10720,7 @@ function renderDeadlineBar(){
   const dls = getDeadlines();
   bar.innerHTML = '';
   if(!S.clients || S.clients.length===0){
-    bar.innerHTML='<span style="font-size:10px;color:var(--tx3)">클라이언트 없음</span>';
+    bar.innerHTML='<span style="font-size:10px;color:var(--tx3)">작품 없음 (설정에서 추가)</span>';
     return;
   }
   S.clients.forEach(cl=>{
@@ -10780,65 +10768,205 @@ function renderDeadlineBar(){
 function chMonth(d){S.sm+=d;if(S.sm>12){S.sm=1;S.sy++;}if(S.sm<1){S.sm=12;S.sy--;}renderSched();}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-//  TRACKER (잔여 횟수 + 운영 현황 요약)
+//  스케줄 셀 팝업 입력
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// 셀 값이 작품 엔트리인지 확인 ("키워드 숫자자" 형태)
+function _schedIsWorkEntry(val){
+  if(!val) return false;
+  return S.clients.some(c=>c.kw&&val.startsWith(c.kw+' ')&&/\d+자/.test(val));
+}
+
+// 월간 작품별 목표 글자수 합산 (셀 파싱)
+function sumGoalChars(y, m, kw){
+  const wks=getWeeks(y,m);
+  let total=0;
+  wks.forEach((wk,wi)=>{
+    CH.forEach(ch=>{
+      wk.forEach((d,di)=>{
+        if(!d) return;
+        const val=getCell(y,m,wi,ch,di)||'';
+        if(!val.startsWith(kw+' ')) return;
+        const match=val.match(/(\d+)자/);
+        if(match) total+=parseInt(match[1]);
+      });
+    });
+  });
+  return total;
+}
+
+// 스케줄 셀 팝업
+function openSchedEntryPopup(cell, y, m, wi, ch, di){
+  document.querySelector('.sched-entry-pop')?.remove();
+  const existing=getCell(y,m,wi,ch,di)||'';
+  // 기존 값 파싱
+  let curWork='', curChars='', curMemo='';
+  const wm=existing&&S.clients.find(c=>c.kw&&existing.startsWith(c.kw+' '));
+  if(wm){
+    curWork=wm.kw;
+    const rest=existing.slice(wm.kw.length+1);
+    const cm=rest.match(/^(\d+)자(?:\s+(.*))?$/);
+    if(cm){curChars=cm[1];curMemo=cm[2]||'';}
+    else curMemo=rest;
+  } else { curMemo=existing; }
+
+  const pop=document.createElement('div');
+  pop.className='sched-entry-pop';
+
+  // 작품 선택
+  const wLbl=document.createElement('div'); wLbl.className='sep-label'; wLbl.textContent='작품';
+  const workSel=document.createElement('select');
+  workSel.innerHTML='<option value="">── 없음 (메모만) ──</option>';
+  S.clients.forEach(c=>{
+    const o=document.createElement('option');
+    o.value=c.kw; o.textContent=c.name+(c.kw&&c.kw!==c.name?` (${c.kw})`:'');
+    if(c.kw===curWork) o.selected=true;
+    workSel.appendChild(o);
+  });
+
+  // 목표 글자수
+  const cLbl=document.createElement('div'); cLbl.className='sep-label'; cLbl.textContent='목표 글자수';
+  const charInp=document.createElement('input');
+  charInp.type='number'; charInp.placeholder='예: 5000'; charInp.min='0'; charInp.step='500';
+  charInp.value=curChars;
+  charInp.style.marginBottom='6px';
+
+  // 메모
+  const mLbl=document.createElement('div'); mLbl.className='sep-label'; mLbl.textContent='메모 (선택)';
+  const memoInp=document.createElement('input');
+  memoInp.type='text'; memoInp.placeholder='ex) 연재분량 마감';
+  memoInp.value=curMemo;
+
+  // 필드 보이기/숨기기
+  const toggleFields=()=>{
+    const hasWork=!!workSel.value;
+    cLbl.style.display=hasWork?'':'none';
+    charInp.style.display=hasWork?'':'none';
+  };
+  workSel.onchange=toggleFields; toggleFields();
+
+  // 버튼
+  const btns=document.createElement('div');
+  btns.style.cssText='display:flex;gap:6px;justify-content:flex-end;margin-top:8px';
+
+  const clrBtn=document.createElement('button'); clrBtn.className='wt-btn';
+  clrBtn.style.cssText='color:var(--rd);font-size:11px'; clrBtn.textContent='지우기';
+  clrBtn.onclick=()=>{
+    cell.textContent=''; cell.className=cell.className.replace(' scell-work','');
+    setCell(y,m,wi,ch,di,''); dsave(); updateTracker(); pop.remove();
+  };
+
+  const cancelBtn=document.createElement('button'); cancelBtn.className='wt-btn';
+  cancelBtn.textContent='취소'; cancelBtn.onclick=()=>pop.remove();
+
+  const saveBtn=document.createElement('button'); saveBtn.className='wt-btn';
+  saveBtn.style.cssText='background:var(--ac);color:#fff'; saveBtn.textContent='저장';
+  saveBtn.onclick=()=>{
+    let val='';
+    if(workSel.value){
+      val=workSel.value;
+      const n=parseInt(charInp.value)||0;
+      if(n>0) val+=' '+n+'자';
+      if(memoInp.value.trim()) val+=' '+memoInp.value.trim();
+    } else {
+      val=memoInp.value.trim();
+    }
+    cell.textContent=val;
+    if(_schedIsWorkEntry(val)) cell.classList.add('scell-work');
+    else cell.classList.remove('scell-work');
+    setCell(y,m,wi,ch,di,val); dsave(); updateTracker(); pop.remove();
+  };
+
+  btns.append(clrBtn,cancelBtn,saveBtn);
+  pop.append(wLbl,workSel,cLbl,charInp,mLbl,memoInp,btns);
+  document.body.appendChild(pop);
+
+  // 위치 조정 — 화면 밖으로 나가지 않게
+  const rect=cell.getBoundingClientRect();
+  const pw=240;
+  let pl=rect.left;
+  if(pl+pw>window.innerWidth-8) pl=window.innerWidth-pw-8;
+  let pt=rect.bottom+2;
+  if(pt+240>window.innerHeight-8) pt=rect.top-244;
+  pop.style.left=pl+'px'; pop.style.top=pt+'px';
+
+  workSel.focus();
+  setTimeout(()=>document.addEventListener('click',function h(e){
+    if(!pop.contains(e.target)&&e.target!==cell){pop.remove();document.removeEventListener('click',h);}
+  },100));
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  TRACKER (작품별 목표/계획/잔여)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function toggleTrkEdit(){
   S.trkEd=!S.trkEd;
   document.getElementById('trkedbtn').style.color=S.trkEd?'var(--ac)':'';
   updateTracker();
 }
+
 function updateTracker(){
   const{sy:y,sm:m}=S;
-  const cls=getMonthClients(y,m).filter(c=>c.q&&Object.values(c.q).some(v=>v>0));
+  const cls=getMonthClients(y,m);
   const trkEl=document.getElementById('trkbody');
   const sumEl=document.getElementById('sumtbl');
+  if(!trkEl||!sumEl) return;
 
   if(!cls.length){
-    trkEl.innerHTML='<div style="font-size:11px;color:var(--tx3);padding:6px">🔄 버튼으로 설정의 클라이언트를 동기화하세요</div>';
-    sumEl.innerHTML='';return;
+    trkEl.innerHTML='<div style="font-size:11px;color:var(--tx3);padding:8px 4px;line-height:1.6">🔄 버튼을 눌러 설정의<br>작품 목록을 동기화하세요</div>';
+    sumEl.innerHTML=''; return;
   }
 
-  // ── 작품별 진행 트래커 ──
-  let h=`<table class="trktbl"><thead><tr><th class="trkch">구분</th>`;
-  cls.forEach(c=>{h+=`<th style="color:${c.color}" title="${c.name}">${c.kw}</th>`;});
-  h+=`</tr></thead><tbody>`;
   if(S.trkEd){
-    CH.forEach(ch=>{
-      h+=`<tr><td class="trkch">${ch}</td>`;
-      cls.forEach((c,ci)=>{
-        const q=c.q[ch]||0;
-        h+=`<td><input type="number" class="trkedinput" min="0" value="${q}" onchange="updQ(${ci},'${ch}',this.value)"></td>`;
-      });h+=`</tr>`;
+    // ── 편집 모드: 목표 글자수 설정 ──
+    let h=`<table class="trktbl"><thead><tr><th class="trkch">작품</th><th>월 목표</th></tr></thead><tbody>`;
+    cls.forEach((c,ci)=>{
+      const q=c.q?.['집필']||0;
+      h+=`<tr><td class="trkch" style="color:${c.color}">${c.name}</td>`;
+      h+=`<td><input type="number" class="trkedinput" style="width:60px" min="0" step="10000" value="${q}" onchange="updQ(${ci},'집필',this.value)" title="총 목표 글자수"></td></tr>`;
     });
-  }else{
-    CH.forEach(ch=>{
-      const show=cls.some(c=>(c.q[ch]||0)>0||countMentions(y,m,c.kw,ch)>0);if(!show)return;
-      h+=`<tr><td class="trkch">${ch}</td>`;
-      cls.forEach(c=>{
-        const q=c.q[ch]||0;const done=countMentions(y,m,c.kw,ch);
-        if(q===0&&done===0){h+=`<td class="trkn na">—</td>`;}
-        else if(q===0){h+=`<td class="trkn r" title="${done}건">${done}</td>`;}
-        else{const rem=q-done;const cl2=rem<0?'r':rem===0?'g':rem<=2?'y':'';h+=`<td class="trkn ${cl2}" title="${done}/${q}">${rem}</td>`;}
-      });h+=`</tr>`;
-    });
+    h+=`</tbody></table><div style="font-size:9px;color:var(--tx3);margin-top:6px">단위: 자(字) — 예) 100000 = 10만자</div>`;
+    trkEl.innerHTML=h;
+    sumEl.innerHTML=''; return;
   }
+
+  // ── 일반 모드: 목표 / 계획 / 잔여 ──
+  let h=`<table class="trktbl"><thead><tr>
+    <th class="trkch">작품</th>
+    <th title="설정에서 지정한 총 목표 글자수">목표</th>
+    <th title="이번 달 스케줄에 계획된 글자수 합계">계획</th>
+    <th title="목표 - 계획">잔여</th>
+  </tr></thead><tbody>`;
+
+  cls.forEach(c=>{
+    const goal = c.q?.['집필']||0;
+    const planned = sumGoalChars(y,m,c.kw);
+    const rem = goal - planned;
+    const cl2 = goal===0?'':rem<0?'r':rem===0?'g':rem<goal*0.3?'y':'';
+    const fmt = n => n>=10000 ? (n/10000).toFixed(1)+'만' : n.toLocaleString();
+    h+=`<tr>
+      <td class="trkch" style="color:${c.color}" title="${c.name}">${c.name.length>4?c.name.slice(0,4)+'…':c.name}</td>
+      <td class="trkn" style="font-size:10px">${goal>0?fmt(goal)+'자':'—'}</td>
+      <td class="trkn" style="color:${planned>0?'var(--ac)':'var(--tx3)'};font-size:10px">${planned>0?fmt(planned)+'자':'—'}</td>
+      <td class="trkn ${cl2}" style="font-size:10px">${goal>0?(rem>=0?'+':'')+fmt(rem)+'자':'—'}</td>
+    </tr>`;
+  });
   h+=`</tbody></table>`;
   trkEl.innerHTML=h;
 
-  // ── 업체별 월간 운영 현황 요약 표 ──
-  // Only show channels that have at least one client with quota > 0
-  const activeCh=CH.filter(ch=>cls.some(c=>(c.q[ch]||0)>0));
+  // ── 월간 현황 요약 ──
   let s=`<table style="width:100%;border-collapse:collapse;font-size:10px">`;
-  s+=`<thead><tr><th style="background:var(--surf3);color:var(--tx3);padding:4px 5px;border:1px solid var(--bdr);white-space:nowrap;text-align:left">작품명</th>`;
-  activeCh.forEach(ch=>{s+=`<th style="background:var(--surf3);color:var(--tx3);padding:4px 3px;border:1px solid var(--bdr);white-space:nowrap;text-align:center;font-size:9.5px">${ch}</th>`;});
-  s+=`</tr></thead><tbody>`;
-  cls.forEach((c,ci)=>{
-    s+=`<tr><td style="padding:3px 5px;border:1px solid var(--bdr);color:${c.color};font-weight:600;white-space:nowrap;font-size:10px">${c.name}</td>`;
-    activeCh.forEach(ch=>{
-      const q=c.q[ch]||0;
-      const val=q===0?'—':formatQ(ch,q);
-      s+=`<td style="padding:3px;border:1px solid var(--bdr);text-align:center;color:${q>0?'var(--tx2)':'var(--bdr)'};font-size:10px;white-space:nowrap">
-        <span style="cursor:pointer" onclick="editSumCell(${ci},'${ch}')" title="클릭하여 수정">${val}</span></td>`;
+  s+=`<thead><tr>
+    <th style="background:var(--surf3);color:var(--tx3);padding:4px 5px;border:1px solid var(--bdr);text-align:left">작품</th>
+    <th style="background:var(--surf3);color:var(--tx3);padding:4px 3px;border:1px solid var(--bdr);text-align:center">집필</th>
+    <th style="background:var(--surf3);color:var(--tx3);padding:4px 3px;border:1px solid var(--bdr);text-align:center">퇴고</th>
+    <th style="background:var(--surf3);color:var(--tx3);padding:4px 3px;border:1px solid var(--bdr);text-align:center">투고</th>
+  </tr></thead><tbody>`;
+  cls.forEach(c=>{
+    s+=`<tr><td style="padding:3px 5px;border:1px solid var(--bdr);color:${c.color};font-weight:600;font-size:10px">${c.name}</td>`;
+    ['집필','퇴고','투고'].forEach(ch=>{
+      const n=countMentions(y,m,c.kw,ch);
+      s+=`<td style="padding:3px;border:1px solid var(--bdr);text-align:center;color:${n>0?'var(--tx2)':'var(--bdr)'};font-size:10px">${n>0?n+'회':'—'}</td>`;
     });
     s+=`</tr>`;
   });
@@ -10846,21 +10974,19 @@ function updateTracker(){
   sumEl.innerHTML=s;
 }
 function formatQ(ch,q){
-  if(ch==='영수증리뷰')return `월 ${q}개`;
-  if(ch==='체험단모집')return `총 ${q}명`;
-  if(ch==='닥톡'){return `주 ${Math.round(q/4)}회`;}
+  if(ch==='집필') return q>=10000?(q/10000).toFixed(1)+'만자':q.toLocaleString()+'자';
   return `월 ${q}회`;
 }
 function editSumCell(ci,ch){
-  // Quick inline quota editor for summary table
   const mCls=getMonthClients(S.sy,S.sm);const c=mCls[ci];if(!c)return;
-  const v=prompt(`${c.name} / ${ch} 할당량:`,c.q[ch]||0);
+  const label=ch==='집필'?'총 목표 글자수':'월간 횟수';
+  const v=prompt(`${c.name} / ${ch} ${label}:`,c.q?.[ch]||0);
   if(v===null)return;const n=parseInt(v);if(isNaN(n))return;
-  mCls[ci].q[ch]=n;save();updateTracker();
+  if(!c.q)c.q={};c.q[ch]=n;save();updateTracker();
 }
 function updQ(ci,ch,v){
   const mCls=getMonthClients(S.sy,S.sm);
-  if(mCls[ci])mCls[ci].q[ch]=parseInt(v)||0;
+  if(mCls[ci]){if(!mCls[ci].q)mCls[ci].q={};mCls[ci].q[ch]=parseInt(v)||0;}
   save();
 }
 
